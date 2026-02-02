@@ -1,7 +1,8 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v2.1)
- * Стек: Express + SQLite3 + EJS (встроенный)
- * Обновления: Skills, Forking, Glitch Text, Synaptic Weights, Ghost Mode, System Daemons, Hex Dump.
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v2.2 - FIX)
+ * Исправления:
+ * 1. Добавлена миграция БД для колонки isGhost (исправлен краш при отправке постов).
+ * 2. Исправлено выравнивание чекбокса Self-Destruct.
  */
 
 const express = require('express');
@@ -54,6 +55,7 @@ db.serialize(() => {
         timestamp INTEGER,
         integrity INTEGER DEFAULT 0,
         weight REAL DEFAULT 0,
+        isGhost INTEGER DEFAULT 0,
         FOREIGN KEY(userId) REFERENCES users(id),
         FOREIGN KEY(parentId) REFERENCES messages(id)
     )`);
@@ -76,12 +78,18 @@ db.serialize(() => {
         FOREIGN KEY(toId) REFERENCES users(id)
     )`);
 
-    // --- ОБНОВЛЕНИЕ СХЕМЫ (Migration для новых фич) ---
-    // Добавляем skills, если нет
-    db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => {
-        if (err && !err.message.includes('duplicate column')) console.log("Skills column already exists or error:", err);
-    });
+    // --- МИГРАЦИИ (Исправление для работы с существующей БД) ---
     
+    // 1. Добавляем skills в users
+    db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column')) console.log("Migration users/skills:", err.message);
+    });
+
+    // 2. Добавляем isGhost в messages (КРИТИЧНО ДЛЯ РАБОТЫ ПОСТОВ)
+    db.run(`ALTER TABLE messages ADD COLUMN isGhost INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column')) console.log("Migration messages/isGhost:", err.message);
+    });
+
     // Создаем Админа по умолчанию
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
@@ -267,8 +275,8 @@ const CSS_STYLES = `
     .panel-header { background: linear-gradient(to bottom, #1a2236, #111625); margin: -15px -15px 15px -15px; padding: 10px 15px; border-bottom: 1px solid var(--border-color); border-radius: 5px 5px 0 0; font-weight: bold; color: var(--primary-color); display:flex; justify-content:space-between; align-items:center;}
     
     /* FORMS */
-    input, textarea, select { width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; }
-    input:focus, textarea:focus, select:focus { border-color: var(--primary-color); outline: none; }
+    input[type="text"], input[type="email"], input[type="password"], input[type="number"], textarea, select { width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; }
+    input[type="text"]:focus, textarea:focus, select:focus { border-color: var(--primary-color); outline: none; }
     
     /* BUTTONS */
     button, .btn { background: linear-gradient(to bottom, var(--primary-color), #990000); color: white; border: 1px solid #770000; padding: 8px 20px; border-radius: 3px; cursor: pointer; font-weight: bold; text-shadow: 1px 1px 0 #000; transition: 0.2s; }
@@ -297,7 +305,7 @@ const CSS_STYLES = `
     .message { position: relative; transition: opacity 2s ease; }
     .message.fade-out { opacity: 0; display: none; }
     
-    .message-meta { display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
+    .message-meta { display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; gap: 5px; }
     .avatar-small { width: 40px; height: 40px; background: #333; border-radius: 3px; margin-right: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); }
     .author-name { font-weight: bold; color: #fff; margin-right: 5px; font-size: 16px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;}
     .post-time { color: var(--text-muted); margin-right: auto; }
@@ -447,7 +455,6 @@ const CLIENT_SCRIPTS = `
 
     // --- GHOST MODE ---
     function initGhostMessages() {
-        // Если у сообщения есть атрибут data-ghost="true", удаляем его через 5 сек
         const ghosts = document.querySelectorAll('.message[data-ghost="true"]');
         ghosts.forEach(msg => {
             setTimeout(() => {
@@ -456,7 +463,6 @@ const CLIENT_SCRIPTS = `
         });
     }
 
-    // Запуск после загрузки
     window.addEventListener('DOMContentLoaded', initGhostMessages);
 </script>
 `;
@@ -781,7 +787,7 @@ app.get('/logout', (req, res) => {
 app.get('/feed', requireAuth, (req, res) => {
     const user = req.session.user;
     
-    // SYNAPTIC WEIGHTS QUERY: Сортировка по формуле (timestamp + replies * 100000)
+    // SYNAPTIC WEIGHTS QUERY
     db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.specModel, u.skills,
                    (SELECT COUNT(*) FROM messages r WHERE r.parentId = m.id) as reply_count
             FROM messages m 
@@ -803,11 +809,10 @@ app.get('/feed', requireAuth, (req, res) => {
         });
 
         Promise.all(promises).then(finalMessages => {
-            // Парсим скиллы для отображения
             finalMessages.forEach(m => {
                 if(m.skills) {
                     const skillList = m.skills.split(',').map(s => s.trim());
-                    m.displaySkill = skillList[0] || ''; // Первый скилл
+                    m.displaySkill = skillList[0] || ''; 
                 } else {
                     m.displaySkill = '';
                 }
@@ -827,11 +832,10 @@ app.get('/feed', requireAuth, (req, res) => {
                         <input type="hidden" id="postType" name="type" value="chat">
                         <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
                         
-                        <!-- GHOST CACHE OPTION -->
-                        <div style="margin-bottom:10px; font-size:12px;">
-                            <label style="color:var(--text-muted); cursor:pointer;">
-                                <input type="checkbox" name="isGhost"> Enable Self-Destruct Protocol (5s)
-                            </label>
+                        <!-- GHOST CACHE OPTION (FIXED CSS) -->
+                        <div style="margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" name="isGhost" id="isGhostCheck" style="width:auto; margin:0; vertical-align:middle;">
+                            <label for="isGhostCheck" style="color:var(--text-muted); cursor:pointer; margin:0; font-size:12px;">Enable Self-Destruct Protocol (5s)</label>
                         </div>
 
                         <div id="tokenCounter" class="token-counter">Tokens: 0/1024</div>
@@ -842,8 +846,6 @@ app.get('/feed', requireAuth, (req, res) => {
 
             finalMessages.forEach(m => {
                 const avatarSVG = generateAvatarSVG(m.userId, m.avatarColor);
-                
-                // Расчет веса для отображения (Tflops)
                 const weightVal = (m.reply_count * 1.5 + (Math.random() * 2)).toFixed(1);
 
                 let messageBody = '';
@@ -875,7 +877,6 @@ app.get('/feed', requireAuth, (req, res) => {
                             </div>
                             <span class="post-time">${new Date(m.timestamp).toLocaleString()}</span>
                             
-                            <!-- SYNAPTIC WEIGHTS DISPLAY -->
                             <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin: 0 10px;">
                                 Weight: ${weightVal} Tflops
                             </div>
@@ -927,7 +928,6 @@ app.get('/fork/:id', requireAuth, (req, res) => {
     db.get("SELECT * FROM messages WHERE id = ?", [msgId], (err, msg) => {
         if (!msg) return res.redirect('/feed');
 
-        // Логика форка: копируем контент с префиксом
         const derivedContent = `> DERIVED FROM #${msgId}\n${msg.content}`;
         
         db.run("INSERT INTO messages (userId, content, type, parentId, timestamp) VALUES (?, ?, ?, ?, ?)", 
@@ -946,7 +946,6 @@ app.get('/api/debug/:msgId', requireAuth, (req, res) => {
     db.get("SELECT content FROM messages WHERE id = ?", [msgId], (err, msg) => {
         if (msg) {
             const hexContent = Buffer.from(msg.content).toString('hex');
-            // Возвращаем просто текст в формате монитора
             const debugHtml = `
                 <body style="background:#000; color:#0f0; font-family:monospace; padding:20px; font-size:12px; word-break:break-all;">
                     <h3>HEX DUMP // MSG_ID: ${msgId}</h3>
@@ -1074,15 +1073,19 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
 
 app.post('/post', requireAuth, (req, res) => {
     const { content, type, isGhost } = req.body;
-    // Если isGhost чекбокс отмечен, ставим 1, иначе 0
     const ghostFlag = isGhost ? 1 : 0;
     
     db.run("INSERT INTO messages (userId, content, type, timestamp, isGhost) VALUES (?, ?, ?, ?, ?)", 
-        [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag], () => {
-        req.session.isPostingSpam = true; 
-        setTimeout(() => { req.session.isPostingSpam = false; }, 60000);
-        res.redirect('/feed');
-    });
+        [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag], (err) => {
+            if (err) {
+                console.error("Error posting message:", err);
+                return res.status(500).send("Internal Server Error: Could not post message. DB schema mismatch?");
+            }
+            req.session.isPostingSpam = true; 
+            setTimeout(() => { req.session.isPostingSpam = false; }, 60000);
+            res.redirect('/feed');
+        }
+    );
 });
 
 app.post('/reply', requireAuth, (req, res) => {
@@ -1218,10 +1221,9 @@ app.get('/delete/msg/:id', requireAdmin, (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v2.1 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v2.2 running at http://localhost:${PORT}`);
 
     // --- BACKGROUND DAEMONS ---
-    // Запускаем после того как сервер начал слушать, чтобы убедиться что БД готова
     setInterval(() => {
         const phrases = [
             "Garbage collection complete...",
@@ -1240,5 +1242,5 @@ app.listen(PORT, () => {
                 if(!err) console.log(`[DAEMON] ${randomPhrase}`);
             }
         );
-    }, 60000); // Каждые 60 секунд
+    }, 60000); 
 });
