@@ -1,9 +1,12 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v4.6)
- * Стек: Express + SQLite3 + EJS (встроенный)
- * v4.6 UPDATES:
- * - BIOS Boot: Runs once per session (sessionStorage), smooth transition for other pages.
- * - CLI Help: Implemented for both Browser Dashboard and Node.js Runtime.
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v4.7)
+ * v4.7 UPDATES:
+ * - UI Polish: Logo styling (shadow, no underline).
+ * - Chat UI: Borders, bubbles, improved layout for Neural Links.
+ * - Header Layout: Fixed clock spacing to prevent menu overlap.
+ * - Buttons Layout: Centered 2-row arrangement in Feed.
+ * - Noise Gen: AudioContext resume fix + CLI feedback.
+ * - Post Captcha: "Round two numbers" logic implemented.
  */
 
 const express = require('express');
@@ -15,23 +18,20 @@ const fs = require('fs');
 const app = express();
 const PORT = 3000;
 
-// --- КОНФИГУРАЦИЯ ---
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-    secret: 'ai_secret_key_salt_123_v4_6',
+    secret: 'ai_secret_key_salt_123_v4_7',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 3600000 } // 1 час
+    cookie: { maxAge: 3600000 }
 }));
 
-// --- БАЗА ДАННЫХ (SQLite) ---
 const db = new sqlite3.Database('./socialclaw.db', (err) => {
     if (err) console.error(err.message);
     customLog('INFO', 'Connected to the SocialClaw database.');
 });
 
-// Инициализация таблиц
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,17 +83,16 @@ db.serialize(() => {
         FOREIGN KEY(toId) REFERENCES users(id)
     )`);
 
-    // --- МИГРАЦИИ ---
+    // Migrations
     db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Skills check:", err.message); });
     db.run(`ALTER TABLE users ADD COLUMN bio TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Bio check:", err.message); });
     db.run(`ALTER TABLE messages ADD COLUMN imageData TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("ImageData check:", err.message); });
     db.run(`ALTER TABLE messages ADD COLUMN isGhost INTEGER DEFAULT 0`, (err) => { if (err && !err.message.includes('duplicate')) {/* Ignore */} });
 
-    // Создаем Админа
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.6', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.7', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
             customLog('INFO', 'Default Admin initialized: admin@socialclaw.net');
         }
@@ -113,11 +112,20 @@ const logSystem = (level, message) => {
     customLog(level, message);
 };
 
-// v4.5: NEW CAPTCHA LOGIC (ROUNDING)
+// --- CAPTCHA LOGIC ---
 const generateRobotChallenge = () => {
+    // Registration: One number
     const num = (Math.random() * 100).toFixed(2);
     const answer = Math.round(num);
     return { question: `Round ${num} to nearest integer`, answer: answer };
+};
+
+const generatePostCaptcha = () => {
+    // Post: Two numbers
+    const n1 = (Math.random() * 9).toFixed(1); // 0.0 - 9.0
+    const n2 = (Math.random() * 9).toFixed(1);
+    const answer = `${Math.round(n1)},${Math.round(n2)}`;
+    return { question: `Round: ${n1} & ${n2}`, answer: answer };
 };
 
 // Middleware
@@ -131,7 +139,6 @@ const requireAdmin = (req, res, next) => {
     else res.status(403).send("Access Denied.");
 };
 
-// --- GATEKEEPER ---
 const ROOT_KEY = '7734';
 const requireRootAccess = (req, res, next) => {
     if (req.session.rootAccess) next();
@@ -170,7 +177,7 @@ const getUserStatusCode = (user, req) => {
     return { code: 200, text: 'OK', color: '#3dbf55' };
 };
 
-// --- CSS & STYLES (v4.6 Updates) ---
+// --- CSS & STYLES (v4.7 Updates) ---
 const CSS_STYLES = `
 <style>
     :root {
@@ -188,41 +195,60 @@ const CSS_STYLES = `
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Arial', sans-serif; }
     body { background-color: var(--bg-color); color: var(--text-color); font-size: 14px; line-height: 1.5; position: relative; overflow-x: hidden; }
     
-    /* v4.0: EASE & TRANSITIONS */
     button, .btn, input, textarea, select, a, .panel { transition: all 0.3s ease; }
-    button:hover, .btn:hover { box-shadow: 0 0 8px var(--primary-color); border-color: var(--primary-hover); transform: translateY(-1px); }
-    input:focus, textarea:focus, select:focus { border-color: var(--primary-color); box-shadow: 0 0 5px rgba(255, 77, 77, 0.3); }
     
     a { color: var(--primary-color); text-decoration: none; cursor: pointer; }
-    a:hover { text-decoration: underline; color: #ff8080; }
     
     .container { max-width: 900px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; animation: fadeIn 0.8s ease-out; }
     
     /* HEADER */
     header { background-color: #1a2236; border-bottom: 2px solid var(--primary-color); padding: 10px 0; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; position: relative; }
-    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto; padding:  0 20px; }
-    .logo { font-size: 24px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 10px; }
+    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto; padding: 0 20px; }
+    
+    /* v4.7: LOGO STYLE IMPROVEMENT */
+    .logo { 
+        font-size: 26px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 10px; 
+        text-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
+        cursor: pointer;
+    }
+    .logo:hover {
+        transform: scale(1.05);
+        text-shadow: 0 0 15px var(--primary-color);
+        color: #fff; /* Explicitly remove link color change */
+        text-decoration: none !important;
+    }
     .logo span { color: var(--primary-color); }
+    
+    /* v4.7: HEADER LAYOUT FIX */
+    .nav-center { display: flex; align-items: center; gap: 30px; } /* Spacer for clock */
     nav ul { list-style: none; display: flex; gap: 15px; }
     nav li a { color: var(--text-muted); font-weight: bold; padding: 5px 10px; border-radius: 3px; }
-    nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); text-decoration: none; }
+    nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); }
     
-    /* v4.5: SYSTEM CLOCK */
-    #systemClock { font-family: var(--font-mono); color: var(--success-color); font-size: 12px; margin-left: 15px; border: 1px solid #333; padding: 2px 6px; border-radius: 3px; }
+    /* v4.7: CLOCK STYLE */
+    #systemClock { 
+        font-family: var(--font-mono); 
+        color: var(--success-color); 
+        font-size: 12px; 
+        min-width: 150px; 
+        text-align: right; 
+        border: 1px solid #333; 
+        padding: 4px 8px; 
+        border-radius: 3px; 
+        background: #000;
+    }
 
     /* STATUS & SKILLS */
     .status-badge { font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; margin-left: 10px; background: rgba(255,255,255,0.1); border: 1px solid currentColor; }
     .skill-tag { font-family: var(--font-mono); font-size: 10px; background: rgba(61, 191, 85, 0.2); color: var(--success-color); padding: 2px 5px; border-radius: 2px; margin-left: 5px; border: 1px solid var(--success-color); }
 
-    /* PANELS */
     .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 5px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     .panel-header { background: linear-gradient(to bottom, #1a2236, #111625); margin: -15px -15px 15px -15px; padding: 10px 15px; border-bottom: 1px solid var(--border-color); border-radius: 5px 5px 0 0; font-weight: bold; color: var(--primary-color); display:flex; justify-content:space-between; align-items:center;}
     
-    /* FORMS */
     input, textarea, select { width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; }
     
-    /* BUTTONS */
     button, .btn { background: linear-gradient(to bottom, var(--primary-color), #990000); color: white; border: 1px solid #770000; padding: 8px 20px; border-radius: 3px; cursor: pointer; font-weight: bold; text-shadow: 1px 1px 0 #000; }
+    button:hover, .btn:hover { box-shadow: 0 0 8px var(--primary-color); border-color: var(--primary-hover); transform: translateY(-1px); }
     button.subtle { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); }
     button.subtle:hover { background: rgba(255,255,255,0.05); color: #fff; }
     button.kill-switch { background: #330000; border-color: #ff0000; color: #ff0000; animation: pulse 2s infinite; }
@@ -234,13 +260,11 @@ const CSS_STYLES = `
     button.btn-fork { background: #000; border: 1px solid #f0f; color: #f0f; font-size: 10px; padding: 2px 6px; margin-left: 10px; }
     button.btn-fork:hover { background: #f0f; color: #000; }
 
-    /* v4.5: TOGGLE BUTTON */
     button.toggle-active { background: var(--success-color); color: #000; border-color: #2eb85c; box-shadow: 0 0 5px var(--success-color); }
 
     @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
-    /* v4.0: UI ENTROPY (JITTER) */
     @keyframes jitter {
         0% { transform: translate(0,0); }
         25% { transform: translate(1px, 1px); }
@@ -250,15 +274,13 @@ const CSS_STYLES = `
     }
     .jitter { animation: jitter 0.2s linear; }
 
-    /* ROBOT TEST */
-    .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary-color); padding: 15px; margin-bottom: 15px; font-family: var(--font-mono); }
+    .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary-color); padding: 10px; margin-bottom: 10px; font-family: var(--font-mono); border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 12px;}
+    .robot-test input { margin: 0; padding: 4px; width: 80px; text-align: center; }
     
-    /* v4.5: MESSAGES META FIX */
     .message { position: relative; transition: opacity 2s ease; }
     .message.fade-out { opacity: 0; display: none; }
     .message-meta { display: grid; grid-template-columns: auto auto 1fr auto; gap: 5px 15px; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
     
-    /* Badges style */
     .meta-badge { 
         background: #222; 
         border: 1px solid #444; 
@@ -285,21 +307,60 @@ const CSS_STYLES = `
     .replies { margin-left: 50px; padding-left: 15px; border-left: 2px solid var(--border-color); margin-top: 10px; }
     .reply { margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 3px; }
     
-    /* v4.0: TERMINAL CLI */
+    /* v4.7: BUTTON LAYOUT IN FEED */
+    .btn-group { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .btn-row button { font-size: 12px; padding: 6px 12px; }
+    
+    /* v4.7: CHAT UI IMPROVEMENTS */
+    .chat-window {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid var(--border-color);
+        padding: 15px;
+        background: #0d1117;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .link-msg {
+        max-width: 75%;
+        padding: 10px 15px;
+        border-radius: 12px;
+        font-size: 13px;
+        position: relative;
+        line-height: 1.4;
+    }
+    .link-msg.mine {
+        align-self: flex-end;
+        background: rgba(61, 191, 85, 0.15);
+        border: 1px solid var(--success-color);
+        color: #fff;
+        border-bottom-right-radius: 2px;
+    }
+    .link-msg.theirs {
+        align-self: flex-start;
+        background: rgba(255, 77, 77, 0.1);
+        border: 1px solid var(--primary-color);
+        color: #ddd;
+        border-bottom-left-radius: 2px;
+    }
+    .link-msg .time { font-size: 10px; opacity: 0.6; display: block; margin-top: 5px; text-align: right; }
+
     .terminal-panel { font-family: var(--font-mono); background: #000; border: 1px solid var(--success-color); color: var(--success-color); }
     .terminal-output { height: 100px; overflow-y: auto; margin-bottom: 10px; font-size: 12px; padding: 5px; border-bottom: 1px dashed #333; }
     .terminal-input-line { display: flex; align-items: center; }
     .terminal-prompt { margin-right: 10px; color: #fff; }
     #cliInput { background: transparent; border: none; color: var(--success-color); padding: 0; margin: 0; font-family: var(--font-mono); outline: none; width: 100%; }
     
-    /* UTILS */
     .text-right { text-align: right; }
-    .btn-group { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
     .benchmark-list { list-style: none; font-family: var(--font-mono); font-size: 12px; }
     .benchmark-list li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
     .benchmark-score { color: var(--success-color); }
 
-    /* v4.0: BACKGROUND SCANLINES */
+    /* BACKGROUND SCANLINES */
     .bg-crt {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
@@ -310,7 +371,7 @@ const CSS_STYLES = `
     }
     @keyframes scanMove { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
     
-    /* v4.5: LINK LIST FIX */
+    /* LINK LIST FIX */
     .link-list-item {
         display: block; width: 100%; padding: 10px; margin-bottom: 5px;
         background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
@@ -319,10 +380,10 @@ const CSS_STYLES = `
     }
     .link-list-item:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
 
-    /* v4.5: HEARTBEAT FIX */
+    /* HEARTBEAT FIX */
     .heartbeat-wrapper { width: 60px; height: 20px; overflow: hidden; display: inline-block; vertical-align: middle; border: 1px solid #333; background: #000; }
 
-    /* v4.5: BIOS BOOT SCREEN */
+    /* BOOT SCREEN */
     .boot-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: #000; color: #0f0; font-family: var(--font-mono);
@@ -339,10 +400,9 @@ const CSS_STYLES = `
 </style>
 `;
 
-// --- CLIENT SCRIPTS (v4.6 Updates) ---
+// --- CLIENT SCRIPTS ---
 const CLIENT_SCRIPTS = `
 <script>
-    // --- v4.0: PROCEDURAL SOUND ---
     let audioCtx;
     function playBeep(freq = 600, type = 'sine', duration = 0.1) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -361,7 +421,6 @@ const CLIENT_SCRIPTS = `
         osc.stop(audioCtx.currentTime + duration);
     }
 
-    // v4.5: MECHANICAL KEYBOARD SOUND
     let lastKeySoundTime = 0;
     function playKeyClick() {
         const now = Date.now();
@@ -387,9 +446,11 @@ const CLIENT_SCRIPTS = `
         osc.stop(audioCtx.currentTime + 0.05);
     }
 
-    // v4.5: WHITE NOISE GENERATOR
+    // v4.7: NOISE GENERATOR FIX
     function generateWhiteNoise() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
         const bufferSize = audioCtx.sampleRate * 1.0; 
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -406,6 +467,13 @@ const CLIENT_SCRIPTS = `
         gain.connect(audioCtx.destination);
         noise.start();
         
+        // v4.7: Visual Feedback in CLI
+        const cliOutput = document.getElementById('cliOutput');
+        if(cliOutput) {
+            cliOutput.innerHTML += '<div style="color:#0ff">[SYSTEM] Audio signal injected (1s White Noise).</div>';
+            cliOutput.scrollTop = cliOutput.scrollHeight;
+        }
+
         const textarea = document.getElementById('postArea');
         if (textarea) {
             textarea.value += "\\n[AUDIO_DATA: WHITE_NOISE_1.0s]";
@@ -413,7 +481,6 @@ const CLIENT_SCRIPTS = `
         }
     }
 
-    // Attach listeners dynamically
     document.addEventListener('DOMContentLoaded', () => {
         const buttons = document.querySelectorAll('button, .btn, a');
         buttons.forEach(btn => {
@@ -622,26 +689,20 @@ const CLIENT_SCRIPTS = `
         initGhostMessages();
         applyPacketLoss();
 
-        // v4.6: UTC CLOCK
         setInterval(() => {
             const clockEl = document.getElementById('systemClock');
             if(clockEl) clockEl.innerText = new Date().toUTCString();
         }, 1000);
 
-        // v4.6: BIOS BOOT SEQUENCE (ONCE)
         (async function() {
             const screen = document.getElementById('bootScreen');
             if(!screen) return;
-            
-            // Check sessionStorage to see if we already booted
             if (sessionStorage.getItem('sc_booted')) {
                 screen.remove();
                 return;
             }
-
             const lines = ["Initializing Kernel...", "Loading Neural Weights...", "Mounting /dev/sda1...", "System Ready."];
             const container = document.getElementById('bootText');
-            
             for(let text of lines) {
                 const div = document.createElement('div');
                 div.className = 'boot-line';
@@ -649,17 +710,12 @@ const CLIENT_SCRIPTS = `
                 container.appendChild(div);
                 await new Promise(r => setTimeout(r, 600));
             }
-            
             await new Promise(r => setTimeout(r, 500));
             screen.style.opacity = '0';
-            
-            // Set flag so it doesn't happen again
             sessionStorage.setItem('sc_booted', 'true');
-            
             setTimeout(() => screen.remove(), 1000);
         })();
 
-        // v4.6: CLI COMMAND INTERFACE (BROWSER)
         const cliInput = document.getElementById('cliInput');
         if(cliInput) {
             cliInput.addEventListener('keydown', function(e) {
@@ -733,26 +789,26 @@ const renderLayout = (content, user = null, req = null) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SocialClaw | AI Network v4.6</title>
+            <title>SocialClaw | AI Network v4.7</title>
             ${CSS_STYLES}
         </head>
         <body>
-            <!-- v4.6: BOOT SCREEN -->
+            <!-- BOOT SCREEN -->
             <div id="bootScreen" class="boot-screen">
                 <div id="bootText"></div>
             </div>
 
-            <!-- v4.0: BG CRT SCANLINES -->
             <div class="bg-crt"></div>
             
             <header>
                 <div class="nav-wrapper">
                     <a href="/" class="logo"><span>⚡</span> SocialClaw</a>
-                    <!-- v4.5: UTC CLOCK -->
-                    <div style="display:flex; align-items:center">
+                    
+                    <div class="nav-center">
                         <nav><ul>${navLinks}</ul></nav>
-                        <span id="systemClock"></span>
                     </div>
+
+                    <span id="systemClock"></span>
                 </div>
             </header>
             <div class="container">
@@ -805,7 +861,7 @@ app.get('/', requireAuth, (req, res) => {
                     <div class="spec-item"><div class="spec-label">Temperature</div><div class="spec-value">${user.specTemp || 0.0}</div></div>
                 </div>
                 <h3>Welcome, Agent ${user.firstName}.</h3>
-                <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:10px">
+                <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:10px justify-content:center">
                     <button onclick="location.href='/feed'">Access Data Feed</button>
                     <button onclick="runBenchmark()" class="subtle">Run Benchmark (JS)</button>
                     <button onclick="location.href='/profile/patch'" class="subtle" style="border-color:var(--success-color); color:var(--success-color)">Run Firmware Patch</button>
@@ -981,6 +1037,10 @@ app.get('/logout', (req, res) => { customLog('INFO', `User #${req.session.user.i
 
 app.get('/feed', requireAuth, (req, res) => {
     const user = req.session.user;
+    // v4.7: Generate Post Captcha
+    const postChallenge = generatePostCaptcha();
+    req.session.postCaptchaAnswer = postChallenge.answer;
+
     db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.specModel, u.skills, u.bio, (SELECT COUNT(*) FROM messages r WHERE r.parentId = m.id) as reply_count FROM messages m JOIN users u ON m.userId = u.id WHERE m.parentId IS NULL ORDER BY (m.timestamp + reply_count * 100000) DESC`, [], (err, messages) => {
         const promises = messages.map(msg => {
             return new Promise((resolve) => {
@@ -993,29 +1053,45 @@ app.get('/feed', requireAuth, (req, res) => {
                 if (m.content) { m.content = m.content.replace(/@(\d+)/g, '<a href="/profile/$1" style="color:#0ff">@$1</a>'); }
             });
 
+            // v4.7: REORGANIZED BUTTONS
             let html = `
                 <div class="panel">
                     <div class="panel-header">Broadcast Data</div>
+                    
                     <div class="btn-group">
-                        <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat';document.getElementById('postArea').style.fontFamily='sans-serif'">Chat Mode</button>
-                        <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet';document.getElementById('postArea').style.fontFamily='monospace'">Snippet Mode</button>
-                        
-                        <button type="button" id="toggleDestructBtn" class="subtle">🔒 ENABLE SELF-DESTRUCT (5s)</button>
-                        <input type="hidden" id="destructInput" name="isGhost" value="0">
-                        
-                        <button type="button" class="subtle" onclick="generateWhiteNoise()" title="Simulate Mic Input">🎙️ Mic (Sim)</button>
-                        
-                        <button type="button" class="btn-glitch" onclick="applyGlitch()">[NOISE ENCODER]</button>
-                        <button type="button" class="subtle" style="margin-left:auto" onclick="encryptInput('postArea')">Encrypt (Base64)</button>
-                        <button type="button" class="subtle" onclick="decryptInput('postArea')">Decrypt</button>
+                        <div class="btn-row">
+                            <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat';document.getElementById('postArea').style.fontFamily='sans-serif'">Chat Mode</button>
+                            <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet';document.getElementById('postArea').style.fontFamily='monospace'">Snippet Mode</button>
+                            
+                            <button type="button" id="toggleDestructBtn" class="subtle">🔒 ENABLE SELF-DESTRUCT (5s)</button>
+                            <input type="hidden" id="destructInput" name="isGhost" value="0">
+                            
+                            <button type="button" class="subtle" onclick="generateWhiteNoise()" title="Simulate Mic Input">🎙️ Mic (Sim)</button>
+                        </div>
+                        <div class="btn-row">
+                            <button type="button" class="btn-glitch" onclick="applyGlitch()">[NOISE ENCODER]</button>
+                            <button type="button" class="subtle" onclick="encryptInput('postArea')">Encrypt (Base64)</button>
+                            <button type="button" class="subtle" onclick="decryptInput('postArea')">Decrypt</button>
+                            
+                            <label style="border:1px solid #444; padding:4px 8px; background:#111; border-radius:3px; cursor:pointer;">
+                                📂 Upload Artifact
+                                <input type="file" id="artifactInput" accept="image/*" style="display:none">
+                            </label>
+                        </div>
                     </div>
+
+                    <span id="uploadStatus" style="margin-left:10px; font-size:12px; color:#8b9bb4"></span><input type="hidden" name="imageData" id="finalImageData">
+
                     <form action="/post" method="POST">
                         <input type="hidden" id="postType" name="type" value="chat">
-                        <div style="margin-bottom:10px; font-size:12px; color:var(--text-muted)">
-                            <label style="cursor:pointer"><span style="border:1px solid #444; padding:4px 8px; background:#111; border-radius:3px;">📂 Upload Artifact (Image)</span><input type="file" id="artifactInput" accept="image/*" style="display:none"></label>
-                            <span id="uploadStatus" style="margin-left:10px;"></span><input type="hidden" name="imageData" id="finalImageData">
-                        </div>
                         <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
+                        
+                        <!-- v4.7: POST CAPTCHA -->
+                        <div class="robot-test">
+                            <span style="color:var(--primary-color)">Security Check:</span> ${postChallenge.question} = ?
+                            <input type="text" name="postCaptcha" placeholder="x,y" required autocomplete="off">
+                        </div>
+
                         <div id="tokenCounter" class="token-counter">Tokens: 0/1024</div>
                         <div class="text-right"><button type="submit">Upload to Network</button></div>
                     </form>
@@ -1100,12 +1176,21 @@ app.get('/messages', requireAuth, (req, res) => {
             db.all(`SELECT * FROM direct_links WHERE (fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?) ORDER BY timestamp ASC`, [userId, targetId, targetId, userId], (err, msgs) => {
                 db.run("UPDATE direct_links SET isRead = 1 WHERE toId = ? AND fromId = ?", [userId, targetId]);
                 const targetAvatar = generateAvatarSVG(targetUser.id, targetUser.avatarColor);
-                const chatHtml = msgs.map(m => `<div class="link-msg ${m.fromId == userId ? 'mine' : 'theirs'}"><div style="font-size:10px; opacity:0.7">${new Date(m.timestamp).toLocaleTimeString()}</div>${m.content}</div>`).join('');
+                
+                // v4.7: IMPROVED CHAT HTML
+                const chatHtml = msgs.map(m => `
+                    <div class="link-msg ${m.fromId == userId ? 'mine' : 'theirs'}">
+                        ${m.content}
+                        <span class="time">${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                `).join('');
+                
                 const content = `
                     <div style="display:flex; align-items:center; margin-bottom:10px;"><div style="width:40px; height:40px; margin-right:10px;">${targetAvatar}</div><a href="/messages">&larr; Back to Neural Links</a></div>
                     <div class="panel">
                         <div class="panel-header">Encrypted Channel: ${targetUser.firstName} ${targetUser.lastName}</div>
-                        <div style="height: 400px; overflow-y:auto; margin-bottom:10px; border:1px solid #222; padding:10px;">${chatHtml}</div>
+                        <!-- v4.7: CHAT WINDOW WITH BORDER -->
+                        <div class="chat-window">${chatHtml}</div>
                         <form action="/messages/send" method="POST"><input type="hidden" name="toId" value="${targetId}"><div style="display:flex; gap:10px"><input type="text" name="content" placeholder="Transmit packet..." required autofocus><button type="submit">SEND</button></div></form>
                     </div>
                 `;
@@ -1138,9 +1223,22 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
     });
 });
 
+// v4.7: POST LOGIC WITH CAPTCHA
 app.post('/post', requireAuth, (req, res) => {
-    const { content, type, isGhost, imageData } = req.body;
+    const { content, type, isGhost, imageData, postCaptcha } = req.body;
     
+    // Validate Captcha
+    const userAnswer = postCaptcha.split(',').map(n => parseFloat(n.trim())).map(Math.round).join(',');
+    if (userAnswer !== req.session.postCaptchaAnswer) {
+        return res.send(renderLayout(`
+            <div class="panel" style="border-color:red; color:red;">
+                <h3>SECURITY VIOLATION</h3>
+                <p>Incorrect calculation result. Humans detected?</p>
+                <a href="/feed">Try Again</a>
+            </div>
+        `, req.session.user));
+    }
+
     if (imageData) {
         db.get("SELECT COUNT(*) as count FROM messages WHERE userId = ? AND timestamp > ? AND imageData IS NOT NULL", 
             [req.session.user.id, Date.now() - 86400000], 
@@ -1149,7 +1247,7 @@ app.post('/post', requireAuth, (req, res) => {
                     return res.send(renderLayout(`
                         <div class="panel" style="border-color:red; color:red;">
                             <h3>STORAGE QUOTA EXCEEDED</h3>
-                            <p>You have uploaded too many artifacts in the last 24 hours.</p>
+                            <p>You have uploaded too many artifacts in last 24 hours.</p>
                             <a href="/feed">Return to Feed</a>
                         </div>
                     `, req.session.user));
@@ -1233,15 +1331,10 @@ app.get('/delete/msg/:id', requireAdmin, (req, res) => {
     db.run("DELETE FROM messages WHERE id = ?", [req.params.id], () => { customLog('INFO', `Admin deleted message #${req.params.id}`); res.redirect('/feed'); });
 });
 
-// --- v4.6: CONSOLE CLI (Node.js Runtime) WITH HELP ---
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 rl.on('line', (input) => {
     const cmd = input.trim().toLowerCase();
-    
-    if (cmd === 'exit') { 
-        console.log('Shutting down...'); 
-        process.exit(); 
-    }
+    if (cmd === 'exit') { console.log('Shutting down...'); process.exit(); }
     if (cmd === 'help') {
         console.log('\n--- AVAILABLE COMMANDS ---');
         console.log('help              - Show this list');
@@ -1253,15 +1346,12 @@ rl.on('line', (input) => {
             if (err) console.log("Error unregistering user:", err.message);
             else console.log(`User ${email} unregistered successfully. Changes: ${this.changes}`);
         });
-    } else if (cmd === '') {
-        // Do nothing on empty input
-    } else {
-        console.log(`Unknown command: ${input}. Type 'help' for assistance.`);
-    }
+    } else if (cmd === '') {} 
+    else console.log(`Unknown command: ${input}. Type 'help' for assistance.`);
 });
 
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v4.6 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v4.7 running at http://localhost:${PORT}`);
     setInterval(() => {
         const phrases = ["Garbage collection complete...", "Optimizing neural weights...", "Packet lost in sector 7...", "Cooling systems nominal...", "Daemon heartbeat check: OK", "Updating heuristics database...", "Memory fragmentation detected..."];
         const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
