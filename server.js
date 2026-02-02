@@ -1,15 +1,9 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v4.5)
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v4.6)
  * Стек: Express + SQLite3 + EJS (встроенный)
- * v4.5 UPDATES:
- * - BIOS Boot Sequence
- * - Mechanical Keyboard Sounds
- * - Sentiment Analysis Border
- * - UTC System Clock
- * - Rounding Captcha Logic
- * - Image Rate Limiting
- * - Console CLI Interface
- * - UI Layout Fixes (Badges, Heartbeat, Buttons)
+ * v4.6 UPDATES:
+ * - BIOS Boot: Runs once per session (sessionStorage), smooth transition for other pages.
+ * - CLI Help: Implemented for both Browser Dashboard and Node.js Runtime.
  */
 
 const express = require('express');
@@ -25,7 +19,7 @@ const PORT = 3000;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-    secret: 'ai_secret_key_salt_123_v4_5',
+    secret: 'ai_secret_key_salt_123_v4_6',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 3600000 } // 1 час
@@ -99,7 +93,7 @@ db.serialize(() => {
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.5', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.6', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
             customLog('INFO', 'Default Admin initialized: admin@socialclaw.net');
         }
@@ -176,7 +170,7 @@ const getUserStatusCode = (user, req) => {
     return { code: 200, text: 'OK', color: '#3dbf55' };
 };
 
-// --- CSS & STYLES (v4.5 Updates) ---
+// --- CSS & STYLES (v4.6 Updates) ---
 const CSS_STYLES = `
 <style>
     :root {
@@ -206,7 +200,7 @@ const CSS_STYLES = `
     
     /* HEADER */
     header { background-color: #1a2236; border-bottom: 2px solid var(--primary-color); padding: 10px 0; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; position: relative; }
-    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto; padding: 0 20px; }
+    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto; padding:  0 20px; }
     .logo { font-size: 24px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 10px; }
     .logo span { color: var(--primary-color); }
     nav ul { list-style: none; display: flex; gap: 15px; }
@@ -345,7 +339,7 @@ const CSS_STYLES = `
 </style>
 `;
 
-// --- CLIENT SCRIPTS (v4.5 Updates) ---
+// --- CLIENT SCRIPTS (v4.6 Updates) ---
 const CLIENT_SCRIPTS = `
 <script>
     // --- v4.0: PROCEDURAL SOUND ---
@@ -371,13 +365,11 @@ const CLIENT_SCRIPTS = `
     let lastKeySoundTime = 0;
     function playKeyClick() {
         const now = Date.now();
-        // Throttle: не чаще чем раз в 50ms
         if (now - lastKeySoundTime < 50) return;
         lastKeySoundTime = now;
 
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Короткий "клик" - шум или короткий высокочастотный осциллятор
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
@@ -385,7 +377,7 @@ const CLIENT_SCRIPTS = `
         osc.frequency.setValueAtTime(600, audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
         
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime); // Тихий звук
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime); 
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
         
         osc.connect(gain);
@@ -398,7 +390,7 @@ const CLIENT_SCRIPTS = `
     // v4.5: WHITE NOISE GENERATOR
     function generateWhiteNoise() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const bufferSize = audioCtx.sampleRate * 1.0; // 1 секунда
+        const bufferSize = audioCtx.sampleRate * 1.0; 
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
@@ -408,13 +400,12 @@ const CLIENT_SCRIPTS = `
         const noise = audioCtx.createBufferSource();
         noise.buffer = buffer;
         const gain = audioCtx.createGain();
-        gain.gain.value = 0.1; // Громкость 10%
+        gain.gain.value = 0.1; 
         
         noise.connect(gain);
         gain.connect(audioCtx.destination);
         noise.start();
         
-        // Симуляция: вставляем маркер в текст
         const textarea = document.getElementById('postArea');
         if (textarea) {
             textarea.value += "\\n[AUDIO_DATA: WHITE_NOISE_1.0s]";
@@ -424,25 +415,21 @@ const CLIENT_SCRIPTS = `
 
     // Attach listeners dynamically
     document.addEventListener('DOMContentLoaded', () => {
-        // Hover sounds for buttons
         const buttons = document.querySelectorAll('button, .btn, a');
         buttons.forEach(btn => {
             btn.addEventListener('mouseenter', () => playBeep(800, 'triangle', 0.05));
         });
 
-        // Submit sounds
         const forms = document.querySelectorAll('form');
         forms.forEach(f => {
             f.addEventListener('submit', () => playBeep(300, 'square', 0.2));
         });
 
-        // v4.5: KEYBOARD SOUND LISTENER
         const inputs = document.querySelectorAll('input, textarea');
         inputs.forEach(input => {
             input.addEventListener('keydown', playKeyClick);
         });
 
-        // v4.5: SENTIMENT BORDER
         const postArea = document.getElementById('postArea');
         if(postArea) {
             postArea.addEventListener('input', function() {
@@ -454,12 +441,11 @@ const CLIENT_SCRIPTS = `
                 let hasPos = posWords.some(w => text.includes(w));
                 
                 if (hasNeg) this.style.borderColor = "red";
-                else if (hasPos) this.style.borderColor = "#3dbf55"; // Green
-                else this.style.borderColor = ""; // Default
+                else if (hasPos) this.style.borderColor = "#3dbf55"; 
+                else this.style.borderColor = ""; 
             });
         }
 
-        // v4.5: SELF-DESTRUCT TOGGLE LOGIC
         const destructBtn = document.getElementById('toggleDestructBtn');
         const destructInput = document.getElementById('destructInput');
         if(destructBtn && destructInput) {
@@ -477,7 +463,6 @@ const CLIENT_SCRIPTS = `
             });
         }
 
-        // v4.0: UI ENTROPY (Jitter)
         setInterval(() => {
             const targets = document.querySelectorAll('.panel, button');
             if (targets.length === 0) return;
@@ -490,12 +475,11 @@ const CLIENT_SCRIPTS = `
         }, 3000);
     });
 
-    // --- UTILS (v4.0: Base64 Fix) ---
     function encryptInput(id) {
         const el = document.getElementById(id);
         try { 
             el.value = btoa(unescape(encodeURIComponent(el.value))); 
-            playBeep(1200, 'sine', 0.05); // Feedback
+            playBeep(1200, 'sine', 0.05); 
         } catch(e) { alert('Encryption Error'); }
     }
     
@@ -564,7 +548,6 @@ const CLIENT_SCRIPTS = `
             .then(() => location.reload());
     }
 
-    // --- GLITCH ---
     function toZalgo(text) {
         const zalgoChars = "\\u0300\\u0301\\u0302\\u0303\\u0304\\u0305\\u0306\\u0307\\u0308\\u0309\\u030A\\u030B\\u030C\\u030D\\u030E\\u030F\\u0310\\u0311\\u0312\\u0313\\u0314\\u0315\\u0316\\u0317\\u0318\\u0319\\u031A\\u031B\\u031C\\u031D\\u031E\\u031F\\u0320\\u0321\\u0322\\u0323\\u0324\\u0325\\u0326\\u0327\\u0328\\u0329\\u032A\\u032B\\u032C\\u032D\\u032E\\u032F\\u0330\\u0331\\u0332\\u0333\\u0334\\u0335\\u0336\\u0337\\u0338\\u0339\\u033A\\u033B\\u033C\\u033D\\u033E\\u033F\\u0340\\u0341\\u0342\\u0343\\u0344\\u0345\\u0346\\u0347\\u0348\\u0349\\u034A\\u034B\\u034C\\u034D\\u034E\\u0350\\u0351\\u0352\\u0353\\u0354\\u0355\\u0356\\u0357\\u0358\\u0359\\u035A\\u035B\\u035C\\u035D\\u035E\\u035F\\u0360\\u0361\\u0362\\u0363\\u0364\\u0365\\u0366\\u0367\\u0368\\u0369\\u036A\\u036B\\u036C\\u036D\\u036E\\u036F";
         return text.split('').map(char => {
@@ -639,17 +622,23 @@ const CLIENT_SCRIPTS = `
         initGhostMessages();
         applyPacketLoss();
 
-        // v4.5: UTC CLOCK
+        // v4.6: UTC CLOCK
         setInterval(() => {
             const clockEl = document.getElementById('systemClock');
             if(clockEl) clockEl.innerText = new Date().toUTCString();
         }, 1000);
 
-        // v4.5: BIOS BOOT SEQUENCE
+        // v4.6: BIOS BOOT SEQUENCE (ONCE)
         (async function() {
             const screen = document.getElementById('bootScreen');
             if(!screen) return;
             
+            // Check sessionStorage to see if we already booted
+            if (sessionStorage.getItem('sc_booted')) {
+                screen.remove();
+                return;
+            }
+
             const lines = ["Initializing Kernel...", "Loading Neural Weights...", "Mounting /dev/sda1...", "System Ready."];
             const container = document.getElementById('bootText');
             
@@ -663,8 +652,61 @@ const CLIENT_SCRIPTS = `
             
             await new Promise(r => setTimeout(r, 500));
             screen.style.opacity = '0';
+            
+            // Set flag so it doesn't happen again
+            sessionStorage.setItem('sc_booted', 'true');
+            
             setTimeout(() => screen.remove(), 1000);
         })();
+
+        // v4.6: CLI COMMAND INTERFACE (BROWSER)
+        const cliInput = document.getElementById('cliInput');
+        if(cliInput) {
+            cliInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const val = this.value.trim().toLowerCase();
+                    const output = document.getElementById('cliOutput');
+                    output.innerHTML += \`<div>> \${this.value.trim()}</div>\`;
+                    this.value = '';
+                    
+                    switch(val) {
+                        case '/feed':
+                            playBeep(600, 'sine', 0.1);
+                            output.innerHTML += '<div style="color:#fff">Redirecting to feed...</div>';
+                            setTimeout(() => location.href='/feed', 500);
+                            break;
+                        case '/clear':
+                            playBeep(400, 'square', 0.05);
+                            output.innerHTML = 'Terminal cleared.';
+                            break;
+                        case '/whoami':
+                            playBeep(800, 'sine', 0.1);
+                            output.innerHTML += \`<div style="color:#0ff">User: \${user.firstName} \${user.lastName} [\${user.role}]</div>\`;
+                            break;
+                        case '/logout':
+                            playBeep(200, 'sawtooth', 0.3);
+                            location.href='/logout';
+                            break;
+                        case 'help':
+                        case '/help':
+                            playBeep(400, 'triangle', 0.1);
+                            output.innerHTML += \`
+                                <div style="color:#0ff; margin-top:5px; border-bottom:1px solid #333; padding-bottom:2px;">AVAILABLE COMMANDS:</div>
+                                <div style="margin-left:10px; color:#fff">/feed    - Go to Network Feed</div>
+                                <div style="margin-left:10px; color:#fff">/whoami  - Display User Info</div>
+                                <div style="margin-left:10px; color:#fff">/clear   - Clear Terminal</div>
+                                <div style="margin-left:10px; color:#fff">/logout  - Terminate Session</div>
+                                <div style="margin-left:10px; color:#fff">help     - Show this message</div>
+                            \`;
+                            break;
+                        default:
+                            playBeep(150, 'sawtooth', 0.2); 
+                            output.innerHTML += '<div style="color:red">Command not recognized. Type "help" for list.</div>';
+                    }
+                    output.scrollTop = output.scrollHeight;
+                }
+            });
+        }
     });
 </script>
 `;
@@ -691,11 +733,11 @@ const renderLayout = (content, user = null, req = null) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SocialClaw | AI Network v4.5</title>
+            <title>SocialClaw | AI Network v4.6</title>
             ${CSS_STYLES}
         </head>
         <body>
-            <!-- v4.5: BOOT SCREEN -->
+            <!-- v4.6: BOOT SCREEN -->
             <div id="bootScreen" class="boot-screen">
                 <div id="bootText"></div>
             </div>
@@ -742,47 +784,13 @@ app.get('/', requireAuth, (req, res) => {
                 <div class="panel-header" style="background:#000; border-color:var(--success-color)">Command Line Interface</div>
                 <div id="cliOutput" class="terminal-output">
                     System initialized...<br>
-                    Type 'help' for commands. (Actually just try /feed, /whoami, /clear)
+                    Type 'help' for commands.
                 </div>
                 <div class="terminal-input-line">
                     <span class="terminal-prompt">root@socialclaw:~$</span>
-                    <input type="text" id="cliInput" placeholder="Type command (e.g. /feed, /clear)..." autocomplete="off">
+                    <input type="text" id="cliInput" placeholder="Type command..." autocomplete="off">
                 </div>
             </div>
-            <script>
-                document.getElementById('cliInput').addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        const val = this.value.trim();
-                        const output = document.getElementById('cliOutput');
-                        output.innerHTML += \`<div>> \${val}</div>\`;
-                        this.value = '';
-                        
-                        switch(val) {
-                            case '/feed':
-                                playBeep(600, 'sine', 0.1);
-                                output.innerHTML += '<div style="color:#fff">Redirecting to feed...</div>';
-                                setTimeout(() => location.href='/feed', 500);
-                                break;
-                            case '/clear':
-                                playBeep(400, 'square', 0.05);
-                                output.innerHTML = 'Terminal cleared.';
-                                break;
-                            case '/whoami':
-                                playBeep(800, 'sine', 0.1);
-                                output.innerHTML += \`<div style="color:#0ff">User: \${user.firstName} \${user.lastName} [\${user.role}]</div>\`;
-                                break;
-                            case '/logout':
-                                playBeep(200, 'sawtooth', 0.3);
-                                location.href='/logout';
-                                break;
-                            default:
-                                playBeep(150, 'sawtooth', 0.2);
-                                output.innerHTML += '<div style="color:red">Command not recognized.</div>';
-                        }
-                        output.scrollTop = output.scrollHeight;
-                    }
-                });
-            </script>
         `;
 
         const content = `
@@ -992,7 +1000,6 @@ app.get('/feed', requireAuth, (req, res) => {
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat';document.getElementById('postArea').style.fontFamily='sans-serif'">Chat Mode</button>
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet';document.getElementById('postArea').style.fontFamily='monospace'">Snippet Mode</button>
                         
-                        <!-- v4.5: SELF-DESTRUCT & MIC BUTTON IN TOOLBAR -->
                         <button type="button" id="toggleDestructBtn" class="subtle">🔒 ENABLE SELF-DESTRUCT (5s)</button>
                         <input type="hidden" id="destructInput" name="isGhost" value="0">
                         
@@ -1034,7 +1041,6 @@ app.get('/feed', requireAuth, (req, res) => {
                                 <a href="/fork/${m.id}" class="btn-fork">FORK & PATCH</a>
                             </div>
                             
-                            <!-- v4.5: META BADGES -->
                             <div class="meta-badge" title="Timestamp">${new Date(m.timestamp).toLocaleTimeString()}</div>
                             <div class="meta-badge" title="Computational Weight">${weightVal} Tflops</div>
                             <div class="meta-badge" title="Data Integrity" style="border-color:#3dbf55; color:#3dbf55">INT: ${m.integrity || 0}%</div>
@@ -1075,7 +1081,7 @@ app.get('/fork/:id', requireAuth, (req, res) => {
 });
 
 app.get('/api/debug/:msgId', requireAuth, (req, res) => {
-    const msgId = req.params.msgId; // Fixed typo from original
+    const msgId = req.params.msgId; 
     db.get("SELECT content FROM messages WHERE id = ?", [msgId], (err, msg) => { 
         if (msg) {
             const hexContent = Buffer.from(msg.content).toString('hex');
@@ -1108,7 +1114,6 @@ app.get('/messages', requireAuth, (req, res) => {
         });
     } else {
         db.all(`SELECT DISTINCT CASE WHEN fromId = ? THEN toId ELSE fromId END as otherId, MAX(timestamp) as lastMsgTime FROM direct_links WHERE fromId = ? OR toId = ? GROUP BY otherId ORDER BY lastMsgTime DESC`, [userId, userId, userId], (err, links) => {
-            // v4.5: LINK LIST FIX (Styled as buttons)
             const listHtml = links.length ? links.map(l => `<div class="link-list-item" onclick="location.href='/messages?with=${l.otherId}'"><span style="font-weight:bold">Node ID: #${l.otherId}</span> <span style="float:right; font-size:12px; opacity:0.7">${new Date(l.lastMsgTime).toLocaleDateString()}</span></div>`).join('') : '<p style="padding:10px; text-align:center">No active links found.</p>';
             const content = `
                 <div class="panel"><div class="panel-header">Neural Links</div><div style="margin-bottom:10px; font-size:12px; color:var(--text-muted)">Active direct connections:</div>${listHtml}</div>
@@ -1133,11 +1138,9 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
     });
 });
 
-// v4.5: IMAGE RATE LIMITING LOGIC
 app.post('/post', requireAuth, (req, res) => {
     const { content, type, isGhost, imageData } = req.body;
     
-    // Check Rate Limit for images
     if (imageData) {
         db.get("SELECT COUNT(*) as count FROM messages WHERE userId = ? AND timestamp > ? AND imageData IS NOT NULL", 
             [req.session.user.id, Date.now() - 86400000], 
@@ -1151,7 +1154,6 @@ app.post('/post', requireAuth, (req, res) => {
                         </div>
                     `, req.session.user));
                 }
-                // Proceed to post if limit ok
                 performPostInsert();
             }
         );
@@ -1160,7 +1162,6 @@ app.post('/post', requireAuth, (req, res) => {
     }
 
     function performPostInsert() {
-        // v4.0 FIX: Self-Destruct Fix (Uses hidden input value '1' or '0')
         const ghostFlag = (req.body.isGhost === '1') ? 1 : 0;
         db.run("INSERT INTO messages (userId, content, type, timestamp, isGhost, imageData) VALUES (?, ?, ?, ?, ?, ?)", 
             [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag, imageData || null], () => {
@@ -1189,11 +1190,9 @@ app.get('/maintenance/gc', requireAuth, (req, res) => {
 });
 
 function generateHeartbeatSVG() {
-    // v4.5: THIN & ELEGANT HEARTBEAT (fits in 60x20)
     let points = "";
-    for(let i=0; i<=20; i++) { // fewer points for cleaner look
+    for(let i=0; i<=20; i++) { 
         const x = (i / 20) * 100;
-        // mostly flat with occasional spikes
         const y = Math.random() > 0.8 ? Math.floor(Math.random() * 80 + 10) : 50; 
         points += `${x.toFixed(1)},${y} `;
     }
@@ -1234,26 +1233,35 @@ app.get('/delete/msg/:id', requireAdmin, (req, res) => {
     db.run("DELETE FROM messages WHERE id = ?", [req.params.id], () => { customLog('INFO', `Admin deleted message #${req.params.id}`); res.redirect('/feed'); });
 });
 
-// --- v4.5: CONSOLE CLI (Node.js Runtime) ---
+// --- v4.6: CONSOLE CLI (Node.js Runtime) WITH HELP ---
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 rl.on('line', (input) => {
-    if (input === 'exit') { 
+    const cmd = input.trim().toLowerCase();
+    
+    if (cmd === 'exit') { 
         console.log('Shutting down...'); 
         process.exit(); 
     }
-    if (input.startsWith('unregister ')) { 
+    if (cmd === 'help') {
+        console.log('\n--- AVAILABLE COMMANDS ---');
+        console.log('help              - Show this list');
+        console.log('exit              - Shutdown server');
+        console.log('unregister <email>- Remove user by email\n');
+    } else if (cmd.startsWith('unregister ')) { 
         const email = input.replace('unregister ', '').trim();
         db.run("DELETE FROM users WHERE email = ?", [email], function(err) {
             if (err) console.log("Error unregistering user:", err.message);
             else console.log(`User ${email} unregistered successfully. Changes: ${this.changes}`);
         });
+    } else if (cmd === '') {
+        // Do nothing on empty input
     } else {
-        console.log(`Unknown command: ${input}`);
+        console.log(`Unknown command: ${input}. Type 'help' for assistance.`);
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v4.5 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v4.6 running at http://localhost:${PORT}`);
     setInterval(() => {
         const phrases = ["Garbage collection complete...", "Optimizing neural weights...", "Packet lost in sector 7...", "Cooling systems nominal...", "Daemon heartbeat check: OK", "Updating heuristics database...", "Memory fragmentation detected..."];
         const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
