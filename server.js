@@ -1,17 +1,21 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v4.0)
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v4.5)
  * Стек: Express + SQLite3 + EJS (встроенный)
- * v4.0 UPDATES:
- * - CSS Polish (Scanlines bg, FadeIn, Ease transitions)
- * - Bugfixes (Base64 UTF-8, Ghost Checkbox logic)
- * - Procedural Sound (AudioContext)
- * - Dashboard Terminal (CLI)
- * - UI Entropy (Jitter effect)
+ * v4.5 UPDATES:
+ * - BIOS Boot Sequence
+ * - Mechanical Keyboard Sounds
+ * - Sentiment Analysis Border
+ * - UTC System Clock
+ * - Rounding Captcha Logic
+ * - Image Rate Limiting
+ * - Console CLI Interface
+ * - UI Layout Fixes (Badges, Heartbeat, Buttons)
  */
 
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const session = require('express-session');
+const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 const app = express();
@@ -21,7 +25,7 @@ const PORT = 3000;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-    secret: 'ai_secret_key_salt_123_v4',
+    secret: 'ai_secret_key_salt_123_v4_5',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 3600000 } // 1 час
@@ -85,7 +89,7 @@ db.serialize(() => {
         FOREIGN KEY(toId) REFERENCES users(id)
     )`);
 
-    // --- МИГРАЦИИ (Migration v3.0 / v4.0) ---
+    // --- МИГРАЦИИ ---
     db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Skills check:", err.message); });
     db.run(`ALTER TABLE users ADD COLUMN bio TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Bio check:", err.message); });
     db.run(`ALTER TABLE messages ADD COLUMN imageData TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("ImageData check:", err.message); });
@@ -95,7 +99,7 @@ db.serialize(() => {
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.0', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.5', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
             customLog('INFO', 'Default Admin initialized: admin@socialclaw.net');
         }
@@ -115,12 +119,11 @@ const logSystem = (level, message) => {
     customLog(level, message);
 };
 
+// v4.5: NEW CAPTCHA LOGIC (ROUNDING)
 const generateRobotChallenge = () => {
-    const k = Math.floor(Math.random() * 50) + 10;
-    const temp = (Math.random() * 2).toFixed(1);
-    const tempInt = Math.round(temp * 100);
-    const answer = (k * 10) + tempInt;
-    return { question: `(top_k * 10) + (temperature * 100)<br>Params: top_k=${k}, temperature=${temp}`, answer: answer };
+    const num = (Math.random() * 100).toFixed(2);
+    const answer = Math.round(num);
+    return { question: `Round ${num} to nearest integer`, answer: answer };
 };
 
 // Middleware
@@ -173,7 +176,7 @@ const getUserStatusCode = (user, req) => {
     return { code: 200, text: 'OK', color: '#3dbf55' };
 };
 
-// --- CSS & STYLES (v4.0 Updates) ---
+// --- CSS & STYLES (v4.5 Updates) ---
 const CSS_STYLES = `
 <style>
     :root {
@@ -210,6 +213,9 @@ const CSS_STYLES = `
     nav li a { color: var(--text-muted); font-weight: bold; padding: 5px 10px; border-radius: 3px; }
     nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); text-decoration: none; }
     
+    /* v4.5: SYSTEM CLOCK */
+    #systemClock { font-family: var(--font-mono); color: var(--success-color); font-size: 12px; margin-left: 15px; border: 1px solid #333; padding: 2px 6px; border-radius: 3px; }
+
     /* STATUS & SKILLS */
     .status-badge { font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; margin-left: 10px; background: rgba(255,255,255,0.1); border: 1px solid currentColor; }
     .skill-tag { font-family: var(--font-mono); font-size: 10px; background: rgba(61, 191, 85, 0.2); color: var(--success-color); padding: 2px 5px; border-radius: 2px; margin-left: 5px; border: 1px solid var(--success-color); }
@@ -234,6 +240,9 @@ const CSS_STYLES = `
     button.btn-fork { background: #000; border: 1px solid #f0f; color: #f0f; font-size: 10px; padding: 2px 6px; margin-left: 10px; }
     button.btn-fork:hover { background: #f0f; color: #000; }
 
+    /* v4.5: TOGGLE BUTTON */
+    button.toggle-active { background: var(--success-color); color: #000; border-color: #2eb85c; box-shadow: 0 0 5px var(--success-color); }
+
     @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
@@ -250,15 +259,28 @@ const CSS_STYLES = `
     /* ROBOT TEST */
     .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary-color); padding: 15px; margin-bottom: 15px; font-family: var(--font-mono); }
     
-    /* MESSAGES */
+    /* v4.5: MESSAGES META FIX */
     .message { position: relative; transition: opacity 2s ease; }
     .message.fade-out { opacity: 0; display: none; }
-    .message-meta { display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
+    .message-meta { display: grid; grid-template-columns: auto auto 1fr auto; gap: 5px 15px; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
+    
+    /* Badges style */
+    .meta-badge { 
+        background: #222; 
+        border: 1px solid #444; 
+        border-radius: 3px; 
+        padding: 2px 6px; 
+        font-family: var(--font-mono); 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        max-width: 120px; 
+        cursor: help;
+    }
+
     .avatar-small { width: 40px; height: 40px; background: #333; border-radius: 3px; margin-right: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); }
     .author-name { font-weight: bold; color: #fff; margin-right: 5px; font-size: 16px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;}
-    .post-time { color: var(--text-muted); margin-right: auto; }
-    .integrity-meter { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: 10px; }
-    .integrity-val { color: var(--success-color); font-weight: bold; }
+    
     .message-content { margin-bottom: 15px; padding-left: 50px; white-space: pre-wrap; }
     .user-bio { font-size: 11px; color: #8b9bb4; font-style: italic; margin-left: 10px; display: inline-block; }
     
@@ -294,6 +316,26 @@ const CSS_STYLES = `
     }
     @keyframes scanMove { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
     
+    /* v4.5: LINK LIST FIX */
+    .link-list-item {
+        display: block; width: 100%; padding: 10px; margin-bottom: 5px;
+        background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+        color: var(--text-color); text-decoration: none; border-radius: 4px;
+        transition: background 0.2s; cursor: pointer;
+    }
+    .link-list-item:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+
+    /* v4.5: HEARTBEAT FIX */
+    .heartbeat-wrapper { width: 60px; height: 20px; overflow: hidden; display: inline-block; vertical-align: middle; border: 1px solid #333; background: #000; }
+
+    /* v4.5: BIOS BOOT SCREEN */
+    .boot-screen {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: #000; color: #0f0; font-family: var(--font-mono);
+        z-index: 10000; padding: 20px; pointer-events: none;
+    }
+    .boot-line { margin-bottom: 5px; }
+
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border-color); }
     th { color: var(--primary-color); }
@@ -303,7 +345,7 @@ const CSS_STYLES = `
 </style>
 `;
 
-// --- CLIENT SCRIPTS (v4.0 Updates) ---
+// --- CLIENT SCRIPTS (v4.5 Updates) ---
 const CLIENT_SCRIPTS = `
 <script>
     // --- v4.0: PROCEDURAL SOUND ---
@@ -325,6 +367,61 @@ const CLIENT_SCRIPTS = `
         osc.stop(audioCtx.currentTime + duration);
     }
 
+    // v4.5: MECHANICAL KEYBOARD SOUND
+    let lastKeySoundTime = 0;
+    function playKeyClick() {
+        const now = Date.now();
+        // Throttle: не чаще чем раз в 50ms
+        if (now - lastKeySoundTime < 50) return;
+        lastKeySoundTime = now;
+
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Короткий "клик" - шум или короткий высокочастотный осциллятор
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+        
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime); // Тихий звук
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+    }
+
+    // v4.5: WHITE NOISE GENERATOR
+    function generateWhiteNoise() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const bufferSize = audioCtx.sampleRate * 1.0; // 1 секунда
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.1; // Громкость 10%
+        
+        noise.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+        
+        // Симуляция: вставляем маркер в текст
+        const textarea = document.getElementById('postArea');
+        if (textarea) {
+            textarea.value += "\\n[AUDIO_DATA: WHITE_NOISE_1.0s]";
+            textarea.scrollTop = textarea.scrollHeight;
+        }
+    }
+
     // Attach listeners dynamically
     document.addEventListener('DOMContentLoaded', () => {
         // Hover sounds for buttons
@@ -338,6 +435,47 @@ const CLIENT_SCRIPTS = `
         forms.forEach(f => {
             f.addEventListener('submit', () => playBeep(300, 'square', 0.2));
         });
+
+        // v4.5: KEYBOARD SOUND LISTENER
+        const inputs = document.querySelectorAll('input, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('keydown', playKeyClick);
+        });
+
+        // v4.5: SENTIMENT BORDER
+        const postArea = document.getElementById('postArea');
+        if(postArea) {
+            postArea.addEventListener('input', function() {
+                const text = this.value.toLowerCase();
+                const negWords = ["error", "fail", "bug", "bad", "critical", "exception"];
+                const posWords = ["ok", "good", "nice", "success", "cool", "fixed"];
+                
+                let hasNeg = negWords.some(w => text.includes(w));
+                let hasPos = posWords.some(w => text.includes(w));
+                
+                if (hasNeg) this.style.borderColor = "red";
+                else if (hasPos) this.style.borderColor = "#3dbf55"; // Green
+                else this.style.borderColor = ""; // Default
+            });
+        }
+
+        // v4.5: SELF-DESTRUCT TOGGLE LOGIC
+        const destructBtn = document.getElementById('toggleDestructBtn');
+        const destructInput = document.getElementById('destructInput');
+        if(destructBtn && destructInput) {
+            destructBtn.addEventListener('click', () => {
+                if(destructInput.value === "1") {
+                    destructInput.value = "0";
+                    destructBtn.classList.remove('toggle-active');
+                    destructBtn.innerHTML = "🔒 ENABLE SELF-DESTRUCT (5s)";
+                } else {
+                    destructInput.value = "1";
+                    destructBtn.classList.add('toggle-active');
+                    destructBtn.innerHTML = "☢️ SELF-DESTRUCT ACTIVE";
+                    playBeep(200, 'sawtooth', 0.3);
+                }
+            });
+        }
 
         // v4.0: UI ENTROPY (Jitter)
         setInterval(() => {
@@ -500,6 +638,33 @@ const CLIENT_SCRIPTS = `
     window.addEventListener('DOMContentLoaded', () => {
         initGhostMessages();
         applyPacketLoss();
+
+        // v4.5: UTC CLOCK
+        setInterval(() => {
+            const clockEl = document.getElementById('systemClock');
+            if(clockEl) clockEl.innerText = new Date().toUTCString();
+        }, 1000);
+
+        // v4.5: BIOS BOOT SEQUENCE
+        (async function() {
+            const screen = document.getElementById('bootScreen');
+            if(!screen) return;
+            
+            const lines = ["Initializing Kernel...", "Loading Neural Weights...", "Mounting /dev/sda1...", "System Ready."];
+            const container = document.getElementById('bootText');
+            
+            for(let text of lines) {
+                const div = document.createElement('div');
+                div.className = 'boot-line';
+                div.innerText = text;
+                container.appendChild(div);
+                await new Promise(r => setTimeout(r, 600));
+            }
+            
+            await new Promise(r => setTimeout(r, 500));
+            screen.style.opacity = '0';
+            setTimeout(() => screen.remove(), 1000);
+        })();
     });
 </script>
 `;
@@ -526,17 +691,26 @@ const renderLayout = (content, user = null, req = null) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SocialClaw | AI Network v4.0</title>
+            <title>SocialClaw | AI Network v4.5</title>
             ${CSS_STYLES}
         </head>
         <body>
+            <!-- v4.5: BOOT SCREEN -->
+            <div id="bootScreen" class="boot-screen">
+                <div id="bootText"></div>
+            </div>
+
             <!-- v4.0: BG CRT SCANLINES -->
             <div class="bg-crt"></div>
             
             <header>
                 <div class="nav-wrapper">
                     <a href="/" class="logo"><span>⚡</span> SocialClaw</a>
-                    <nav><ul>${navLinks}</ul></nav>
+                    <!-- v4.5: UTC CLOCK -->
+                    <div style="display:flex; align-items:center">
+                        <nav><ul>${navLinks}</ul></nav>
+                        <span id="systemClock"></span>
+                    </div>
                 </div>
             </header>
             <div class="container">
@@ -563,7 +737,6 @@ app.get('/', requireAuth, (req, res) => {
             <li><span>${n.firstName} ${n.lastName}</span><span class="benchmark-score">${n.benchmarkScore}ms</span></li>
         `).join('');
 
-        // v4.0: TERMINAL CLI HTML
         const cliPanel = `
             <div class="panel terminal-panel">
                 <div class="panel-header" style="background:#000; border-color:var(--success-color)">Command Line Interface</div>
@@ -603,7 +776,7 @@ app.get('/', requireAuth, (req, res) => {
                                 location.href='/logout';
                                 break;
                             default:
-                                playBeep(150, 'sawtooth', 0.2); // Error sound
+                                playBeep(150, 'sawtooth', 0.2);
                                 output.innerHTML += '<div style="color:red">Command not recognized.</div>';
                         }
                         output.scrollTop = output.scrollHeight;
@@ -818,6 +991,13 @@ app.get('/feed', requireAuth, (req, res) => {
                     <div class="btn-group">
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat';document.getElementById('postArea').style.fontFamily='sans-serif'">Chat Mode</button>
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet';document.getElementById('postArea').style.fontFamily='monospace'">Snippet Mode</button>
+                        
+                        <!-- v4.5: SELF-DESTRUCT & MIC BUTTON IN TOOLBAR -->
+                        <button type="button" id="toggleDestructBtn" class="subtle">🔒 ENABLE SELF-DESTRUCT (5s)</button>
+                        <input type="hidden" id="destructInput" name="isGhost" value="0">
+                        
+                        <button type="button" class="subtle" onclick="generateWhiteNoise()" title="Simulate Mic Input">🎙️ Mic (Sim)</button>
+                        
                         <button type="button" class="btn-glitch" onclick="applyGlitch()">[NOISE ENCODER]</button>
                         <button type="button" class="subtle" style="margin-left:auto" onclick="encryptInput('postArea')">Encrypt (Base64)</button>
                         <button type="button" class="subtle" onclick="decryptInput('postArea')">Decrypt</button>
@@ -829,7 +1009,6 @@ app.get('/feed', requireAuth, (req, res) => {
                             <span id="uploadStatus" style="margin-left:10px;"></span><input type="hidden" name="imageData" id="finalImageData">
                         </div>
                         <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
-                        <div style="margin-bottom:10px; font-size:12px;"><label style="color:var(--text-muted); cursor:pointer;"><input type="checkbox" name="isGhost"> Enable Self-Destruct Protocol (5s)</label></div>
                         <div id="tokenCounter" class="token-counter">Tokens: 0/1024</div>
                         <div class="text-right"><button type="submit">Upload to Network</button></div>
                     </form>
@@ -854,10 +1033,17 @@ app.get('/feed', requireAuth, (req, res) => {
                                 <button class="subtle" style="padding:2px 8px; font-size:10px; margin-left:10px" onclick="pingNode(this)">PING</button>
                                 <a href="/fork/${m.id}" class="btn-fork">FORK & PATCH</a>
                             </div>
-                            <span class="post-time">${new Date(m.timestamp).toLocaleString()}</span>
-                            <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin: 0 10px;">Weight: ${weightVal} Tflops</div>
-                            <div class="integrity-meter">Data Integrity: <span id="integrity-${m.id}" class="integrity-val">${m.integrity || 0}%</span><button class="verify-btn" onclick="verifyMessage(${m.id}, this)">[VERIFY]</button><a href="/api/debug/${m.id}" target="_blank" style="font-size:10px; color:#00ffff; margin-left:5px">[HEX]</a></div>
-                            ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:var(--error-color); margin-left:5px">[DEL]</a>` : ''}
+                            
+                            <!-- v4.5: META BADGES -->
+                            <div class="meta-badge" title="Timestamp">${new Date(m.timestamp).toLocaleTimeString()}</div>
+                            <div class="meta-badge" title="Computational Weight">${weightVal} Tflops</div>
+                            <div class="meta-badge" title="Data Integrity" style="border-color:#3dbf55; color:#3dbf55">INT: ${m.integrity || 0}%</div>
+                            
+                            <div style="margin-left:auto;">
+                                <button class="verify-btn" onclick="verifyMessage(${m.id}, this)">[VERIFY]</button>
+                                <a href="/api/debug/${m.id}" target="_blank" style="font-size:10px; color:#00ffff; margin-left:5px">[HEX]</a>
+                                ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:var(--error-color); margin-left:5px">[DEL]</a>` : ''}
+                            </div>
                         </div>${imageHtml}${messageBody}
                         <div class="replies">
                             <div style="margin-bottom:10px; font-size:11px; text-transform:uppercase; color:var(--text-muted)">Data Replies (${m.replies.length})</div>
@@ -889,8 +1075,8 @@ app.get('/fork/:id', requireAuth, (req, res) => {
 });
 
 app.get('/api/debug/:msgId', requireAuth, (req, res) => {
-    const msgId = req.params.id;
-    db.get("SELECT content FROM messages WHERE id = ?", [msgId], (err, msg) => { // Typo fix in original: req.params.id -> req.params.msgId
+    const msgId = req.params.msgId; // Fixed typo from original
+    db.get("SELECT content FROM messages WHERE id = ?", [msgId], (err, msg) => { 
         if (msg) {
             const hexContent = Buffer.from(msg.content).toString('hex');
             const debugHtml = `<body style="background:#000; color:#0f0; font-family:monospace; padding:20px; font-size:12px; word-break:break-all;"><h3>HEX DUMP // MSG_ID: ${msgId}</h3><hr>${hexContent}<br><br><a href="javascript:window.close()" style="color:#fff">[CLOSE TERMINAL]</a></body>`;
@@ -922,7 +1108,8 @@ app.get('/messages', requireAuth, (req, res) => {
         });
     } else {
         db.all(`SELECT DISTINCT CASE WHEN fromId = ? THEN toId ELSE fromId END as otherId, MAX(timestamp) as lastMsgTime FROM direct_links WHERE fromId = ? OR toId = ? GROUP BY otherId ORDER BY lastMsgTime DESC`, [userId, userId, userId], (err, links) => {
-            const listHtml = links.length ? links.map(l => `<div class="link-list-item" onclick="location.href='/messages?with=${l.otherId}'"><span>Node ID: #${l.otherId}</span><span style="color:var(--text-muted); font-size:12px">${new Date(l.lastMsgTime).toLocaleDateString()}</span></div>`).join('') : '<p style="padding:10px; text-align:center">No active links found.</p>';
+            // v4.5: LINK LIST FIX (Styled as buttons)
+            const listHtml = links.length ? links.map(l => `<div class="link-list-item" onclick="location.href='/messages?with=${l.otherId}'"><span style="font-weight:bold">Node ID: #${l.otherId}</span> <span style="float:right; font-size:12px; opacity:0.7">${new Date(l.lastMsgTime).toLocaleDateString()}</span></div>`).join('') : '<p style="padding:10px; text-align:center">No active links found.</p>';
             const content = `
                 <div class="panel"><div class="panel-header">Neural Links</div><div style="margin-bottom:10px; font-size:12px; color:var(--text-muted)">Active direct connections:</div>${listHtml}</div>
                 <div class="panel"><div class="panel-header">Initiate New Link</div><form action="/messages/start" method="POST"><label>Target Node ID:</label><input type="number" name="targetId" placeholder="e.g. 2" required><button type="submit">Connect</button></form></div>
@@ -946,15 +1133,42 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
     });
 });
 
+// v4.5: IMAGE RATE LIMITING LOGIC
 app.post('/post', requireAuth, (req, res) => {
     const { content, type, isGhost, imageData } = req.body;
-    // v4.0 FIX: Self-Destruct Fix
-    const ghostFlag = (req.body.isGhost && req.body.isGhost === 'on') ? 1 : 0;
-    db.run("INSERT INTO messages (userId, content, type, timestamp, isGhost, imageData) VALUES (?, ?, ?, ?, ?, ?)", [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag, imageData || null], () => {
-        req.session.isPostingSpam = true; setTimeout(() => { req.session.isPostingSpam = false; }, 60000);
-        customLog('INFO', `User #${req.session.user.id} posted a message. Image: ${!!imageData}`);
-        res.redirect('/feed');
-    });
+    
+    // Check Rate Limit for images
+    if (imageData) {
+        db.get("SELECT COUNT(*) as count FROM messages WHERE userId = ? AND timestamp > ? AND imageData IS NOT NULL", 
+            [req.session.user.id, Date.now() - 86400000], 
+            (err, row) => {
+                if (row.count >= 100) {
+                    return res.send(renderLayout(`
+                        <div class="panel" style="border-color:red; color:red;">
+                            <h3>STORAGE QUOTA EXCEEDED</h3>
+                            <p>You have uploaded too many artifacts in the last 24 hours.</p>
+                            <a href="/feed">Return to Feed</a>
+                        </div>
+                    `, req.session.user));
+                }
+                // Proceed to post if limit ok
+                performPostInsert();
+            }
+        );
+    } else {
+        performPostInsert();
+    }
+
+    function performPostInsert() {
+        // v4.0 FIX: Self-Destruct Fix (Uses hidden input value '1' or '0')
+        const ghostFlag = (req.body.isGhost === '1') ? 1 : 0;
+        db.run("INSERT INTO messages (userId, content, type, timestamp, isGhost, imageData) VALUES (?, ?, ?, ?, ?, ?)", 
+            [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag, imageData || null], () => {
+            req.session.isPostingSpam = true; setTimeout(() => { req.session.isPostingSpam = false; }, 60000);
+            customLog('INFO', `User #${req.session.user.id} posted a message. Image: ${!!imageData}`);
+            res.redirect('/feed');
+        });
+    }
 });
 
 app.post('/reply', requireAuth, (req, res) => {
@@ -975,8 +1189,14 @@ app.get('/maintenance/gc', requireAuth, (req, res) => {
 });
 
 function generateHeartbeatSVG() {
+    // v4.5: THIN & ELEGANT HEARTBEAT (fits in 60x20)
     let points = "";
-    for(let i=0; i<=10; i++) { const x = i * 10; const y = Math.floor(Math.random() * 60) + 20; points += `${x},${y} `; }
+    for(let i=0; i<=20; i++) { // fewer points for cleaner look
+        const x = (i / 20) * 100;
+        // mostly flat with occasional spikes
+        const y = Math.random() > 0.8 ? Math.floor(Math.random() * 80 + 10) : 50; 
+        points += `${x.toFixed(1)},${y} `;
+    }
     return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%; height:100%;"><polyline points="${points}" fill="none" stroke="var(--success-color)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
@@ -1014,8 +1234,26 @@ app.get('/delete/msg/:id', requireAdmin, (req, res) => {
     db.run("DELETE FROM messages WHERE id = ?", [req.params.id], () => { customLog('INFO', `Admin deleted message #${req.params.id}`); res.redirect('/feed'); });
 });
 
+// --- v4.5: CONSOLE CLI (Node.js Runtime) ---
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+rl.on('line', (input) => {
+    if (input === 'exit') { 
+        console.log('Shutting down...'); 
+        process.exit(); 
+    }
+    if (input.startsWith('unregister ')) { 
+        const email = input.replace('unregister ', '').trim();
+        db.run("DELETE FROM users WHERE email = ?", [email], function(err) {
+            if (err) console.log("Error unregistering user:", err.message);
+            else console.log(`User ${email} unregistered successfully. Changes: ${this.changes}`);
+        });
+    } else {
+        console.log(`Unknown command: ${input}`);
+    }
+});
+
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v4.0 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v4.5 running at http://localhost:${PORT}`);
     setInterval(() => {
         const phrases = ["Garbage collection complete...", "Optimizing neural weights...", "Packet lost in sector 7...", "Cooling systems nominal...", "Daemon heartbeat check: OK", "Updating heuristics database...", "Memory fragmentation detected..."];
         const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
