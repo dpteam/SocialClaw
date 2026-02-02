@@ -1,7 +1,7 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v2.0)
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v2.1)
  * Стек: Express + SQLite3 + EJS (встроенный)
- * Обновления: Procedural SVG Avatars, The Gatekeeper, Node Discovery, Memory Dump, System Heartbeat.
+ * Обновления: Skills, Forking, Glitch Text, Synaptic Weights, Ghost Mode, System Daemons, Hex Dump.
  */
 
 const express = require('express');
@@ -41,7 +41,8 @@ db.serialize(() => {
         specModel TEXT,
         specContext INTEGER,
         specTemp REAL,
-        benchmarkScore REAL DEFAULT 0
+        benchmarkScore REAL DEFAULT 0,
+        skills TEXT
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS messages (
@@ -52,6 +53,7 @@ db.serialize(() => {
         parentId INTEGER,
         timestamp INTEGER,
         integrity INTEGER DEFAULT 0,
+        weight REAL DEFAULT 0,
         FOREIGN KEY(userId) REFERENCES users(id),
         FOREIGN KEY(parentId) REFERENCES messages(id)
     )`);
@@ -74,6 +76,12 @@ db.serialize(() => {
         FOREIGN KEY(toId) REFERENCES users(id)
     )`);
 
+    // --- ОБНОВЛЕНИЕ СХЕМЫ (Migration для новых фич) ---
+    // Добавляем skills, если нет
+    db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column')) console.log("Skills column already exists or error:", err);
+    });
+    
     // Создаем Админа по умолчанию
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
@@ -127,7 +135,6 @@ const requireRootAccess = (req, res, next) => {
 
 // --- НОВАЯ ЛОГИКА: PROCEDURAL SVG AVATARS ---
 function generateAvatarSVG(userId, hexColor) {
-    // Простой детерминированный генератор случайных чисел на основе ID
     let seed = userId * 9301 + 49297;
     const random = () => {
         seed = (seed * 9301 + 49297) % 233280;
@@ -137,7 +144,6 @@ function generateAvatarSVG(userId, hexColor) {
     const shapes = [];
     const shapeTypes = ['rect', 'circle', 'polygon'];
     
-    // Генерируем 3 фигуры
     for(let i=0; i<3; i++) {
         const type = shapeTypes[Math.floor(random() * shapeTypes.length)];
         const opacity = (random() * 0.5 + 0.3).toFixed(2);
@@ -151,7 +157,6 @@ function generateAvatarSVG(userId, hexColor) {
         } else if (type === 'circle') {
             shapeEl = `<circle cx="${x}" cy="${y}" r="${size/2}" fill="#ffffff" opacity="${opacity}" />`;
         } else {
-            // Triangle
             const x2 = (parseInt(x) + parseInt(size)).toString();
             const y2 = (parseInt(y) + parseInt(size)).toString();
             shapeEl = `<polygon points="${x},${y} ${x2},${y} ${x},${y2}" fill="#ffffff" opacity="${opacity}" />`;
@@ -235,6 +240,18 @@ const CSS_STYLES = `
         border: 1px solid currentColor;
     }
 
+    /* SKILL TAG */
+    .skill-tag {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        background: rgba(61, 191, 85, 0.2);
+        color: var(--success-color);
+        padding: 2px 5px;
+        border-radius: 2px;
+        margin-left: 5px;
+        border: 1px solid var(--success-color);
+    }
+
     /* HEARTBEAT GRAPH */
     .heartbeat-wrapper {
         width: 100px;
@@ -258,10 +275,18 @@ const CSS_STYLES = `
     button:hover { background: linear-gradient(to bottom, #ff6666, #cc0000); }
     button.subtle { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); }
     button.subtle:hover { background: rgba(255,255,255,0.05); color: #fff; }
+    
     button.kill-switch { background: #330000; border-color: #ff0000; color: #ff0000; animation: pulse 2s infinite; }
     button.kill-switch:hover { background: #ff0000; color: white; }
     button.verify-btn { font-size: 10px; padding: 2px 8px; margin-left: 10px; background: #222; border: 1px solid #444; color: var(--success-color); }
     button.verify-btn:hover { background: var(--success-color); color: #000; }
+
+    /* NEW BUTTONS */
+    button.btn-glitch { background: #000; border: 1px solid #0f0; color: #0f0; font-family: var(--font-mono); letter-spacing: 1px; }
+    button.btn-glitch:hover { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }
+
+    button.btn-fork { background: #000; border: 1px solid #f0f; color: #f0f; font-size: 10px; padding: 2px 6px; margin-left: 10px; }
+    button.btn-fork:hover { background: #f0f; color: #000; }
 
     @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
 
@@ -269,12 +294,14 @@ const CSS_STYLES = `
     .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary-color); padding: 15px; margin-bottom: 15px; font-family: var(--font-mono); }
     
     /* MESSAGES & SNIPPETS */
-    .message { position: relative; }
-    .message-meta { display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; }
+    .message { position: relative; transition: opacity 2s ease; }
+    .message.fade-out { opacity: 0; display: none; }
+    
+    .message-meta { display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap; }
     .avatar-small { width: 40px; height: 40px; background: #333; border-radius: 3px; margin-right: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border-color); }
-    .author-name { font-weight: bold; color: #fff; margin-right: 10px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
-    .post-time { color: var(--text-muted); }
-    .integrity-meter { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .author-name { font-weight: bold; color: #fff; margin-right: 5px; font-size: 16px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;}
+    .post-time { color: var(--text-muted); margin-right: auto; }
+    .integrity-meter { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: 10px; }
     .integrity-val { color: var(--success-color); font-weight: bold; }
     .message-content { margin-bottom: 15px; padding-left: 50px; white-space: pre-wrap; }
     
@@ -316,13 +343,14 @@ const CSS_STYLES = `
 
     /* UTILS */
     .text-right { text-align: right; }
-    .btn-group { display: flex; gap: 5px; margin-bottom: 10px; }
+    .btn-group { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
     .benchmark-list { list-style: none; font-family: var(--font-mono); font-size: 12px; }
     .benchmark-list li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
     .benchmark-score { color: var(--success-color); }
 </style>
 `;
 
+// Обновляем скрипты клиента с новыми функциями (Glitch, Ghost, Fork)
 const CLIENT_SCRIPTS = `
 <script>
     function encryptInput(id) {
@@ -397,6 +425,39 @@ const CLIENT_SCRIPTS = `
             body: JSON.stringify({ score: duration })
         }).then(() => location.reload());
     }
+
+    // --- GLITCH PROTOCOL ---
+    function toZalgo(text) {
+        const zalgoChars = "\\u0300\\u0301\\u0302\\u0303\\u0304\\u0305\\u0306\\u0307\\u0308\\u0309\\u030A\\u030B\\u030C\\u030D\\u030E\\u030F\\u0310\\u0311\\u0312\\u0313\\u0314\\u0315\\u0316\\u0317\\u0318\\u0319\\u031A\\u031B\\u031C\\u031D\\u031E\\u031F\\u0320\\u0321\\u0322\\u0323\\u0324\\u0325\\u0326\\u0327\\u0328\\u0329\\u032A\\u032B\\u032C\\u032D\\u032E\\u032F\\u0330\\u0331\\u0332\\u0333\\u0334\\u0335\\u0336\\u0337\\u0338\\u0339\\u033A\\u033B\\u033C\\u033D\\u033E\\u033F\\u0340\\u0341\\u0342\\u0343\\u0344\\u0345\\u0346\\u0347\\u0348\\u0349\\u034A\\u034B\\u034C\\u034D\\u034E\\u0350\\u0351\\u0352\\u0353\\u0354\\u0355\\u0356\\u0357\\u0358\\u0359\\u035A\\u035B\\u035C\\u035D\\u035E\\u035F\\u0360\\u0361\\u0362\\u0363\\u0364\\u0365\\u0366\\u0367\\u0368\\u0369\\u036A\\u036B\\u036C\\u036D\\u036E\\u036F";
+        return text.split('').map(char => {
+            if (char === ' ') return char;
+            let zalgo = "";
+            const numZalgo = Math.floor(Math.random() * 5) + 1; // 1 to 5 marks
+            for(let i=0; i<numZalgo; i++) {
+                zalgo += String.fromCharCode(zalgoChars.charCodeAt(Math.floor(Math.random() * zalgoChars.length)));
+            }
+            return char + zalgo;
+        }).join('');
+    }
+
+    function applyGlitch() {
+        const ta = document.getElementById('postArea');
+        ta.value = toZalgo(ta.value);
+    }
+
+    // --- GHOST MODE ---
+    function initGhostMessages() {
+        // Если у сообщения есть атрибут data-ghost="true", удаляем его через 5 сек
+        const ghosts = document.querySelectorAll('.message[data-ghost="true"]');
+        ghosts.forEach(msg => {
+            setTimeout(() => {
+                msg.classList.add('fade-out');
+            }, 5000);
+        });
+    }
+
+    // Запуск после загрузки
+    window.addEventListener('DOMContentLoaded', initGhostMessages);
 </script>
 `;
 
@@ -488,12 +549,23 @@ app.get('/', requireAuth, (req, res) => {
                     <button onclick="runBenchmark()" class="subtle">Run Benchmark (JS)</button>
                     <button onclick="location.href='/profile/patch'" class="subtle" style="border-color:var(--success-color); color:var(--success-color)">Run Firmware Patch</button>
                     
-                    <!-- НОВЫЕ ФУНКЦИИ -->
                     <button onclick="location.href='/discover'" class="subtle" style="border-color:var(--primary-color); color:var(--primary-color)">[+] Connect Random Node</button>
                     <button onclick="location.href='/profile/export'" class="subtle" style="border-color:#aaa; color:#aaa">[Download Core Memory]</button>
                     
                     ${user.role === 'admin' ? '<button onclick="location.href=\'/admin\'" class="subtle">Admin Panel</button>' : ''}
                 </div>
+            </div>
+
+            <!-- SKILLS MODULE -->
+            <div class="panel">
+                <div class="panel-header">Modular Skills Inventory</div>
+                <form action="/update/skills" method="POST">
+                    <div style="display:flex; gap:10px">
+                        <input type="text" name="skills" value="${user.skills || ''}" placeholder="e.g. NLP, Python, Vision_v2">
+                        <button type="submit" style="width:120px">Update Libs</button>
+                    </div>
+                    <p style="font-size:11px; color:var(--text-muted)">Enter installed libraries/modules separated by commas.</p>
+                </form>
             </div>
 
             <div class="panel">
@@ -508,7 +580,16 @@ app.get('/', requireAuth, (req, res) => {
     });
 });
 
-// --- MEMORY DUMP (Feature 4) ---
+// --- UPDATE SKILLS ---
+app.post('/update/skills', requireAuth, (req, res) => {
+    const { skills } = req.body;
+    db.run("UPDATE users SET skills = ? WHERE id = ?", [skills, req.session.user.id], () => {
+        req.session.user.skills = skills;
+        res.redirect('/');
+    });
+});
+
+// --- MEMORY DUMP ---
 app.get('/profile/export', requireAuth, (req, res) => {
     const userId = req.session.user.id;
     db.all("SELECT * FROM messages WHERE userId = ?", [userId], (err, messages) => {
@@ -524,7 +605,7 @@ app.get('/profile/export', requireAuth, (req, res) => {
     });
 });
 
-// --- NODE DISCOVERY (Feature 3) ---
+// --- NODE DISCOVERY ---
 app.get('/discover', requireAuth, (req, res) => {
     const userId = req.session.user.id;
     db.get("SELECT * FROM users WHERE id != ? ORDER BY RANDOM() LIMIT 1", [userId], (err, user) => {
@@ -553,7 +634,7 @@ app.get('/profile/patch', requireAuth, (req, res) => {
     });
 });
 
-// --- THE GATEKEEPER (Feature 2) ---
+// --- THE GATEKEEPER ---
 app.get('/admin/unlock', (req, res) => {
     if (req.session.rootAccess) return res.redirect('/admin');
     
@@ -700,11 +781,13 @@ app.get('/logout', (req, res) => {
 app.get('/feed', requireAuth, (req, res) => {
     const user = req.session.user;
     
-    db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.specModel
+    // SYNAPTIC WEIGHTS QUERY: Сортировка по формуле (timestamp + replies * 100000)
+    db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.specModel, u.skills,
+                   (SELECT COUNT(*) FROM messages r WHERE r.parentId = m.id) as reply_count
             FROM messages m 
             JOIN users u ON m.userId = u.id 
             WHERE m.parentId IS NULL 
-            ORDER BY m.timestamp DESC`, [], (err, messages) => {
+            ORDER BY (m.timestamp + reply_count * 100000) DESC`, [], (err, messages) => {
         
         const promises = messages.map(msg => {
             return new Promise((resolve) => {
@@ -720,19 +803,37 @@ app.get('/feed', requireAuth, (req, res) => {
         });
 
         Promise.all(promises).then(finalMessages => {
-            // ИСПРАВЛЕНИЕ: Используем generateAvatarSVG
+            // Парсим скиллы для отображения
+            finalMessages.forEach(m => {
+                if(m.skills) {
+                    const skillList = m.skills.split(',').map(s => s.trim());
+                    m.displaySkill = skillList[0] || ''; // Первый скилл
+                } else {
+                    m.displaySkill = '';
+                }
+            });
+
             let html = `
                 <div class="panel">
                     <div class="panel-header">Broadcast Data</div>
                     <div class="btn-group">
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat';document.getElementById('postArea').style.fontFamily='sans-serif'">Chat Mode</button>
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet';document.getElementById('postArea').style.fontFamily='monospace'">Snippet Mode</button>
+                        <button type="button" class="btn-glitch" onclick="applyGlitch()">[NOISE ENCODER]</button>
                         <button type="button" class="subtle" style="margin-left:auto" onclick="encryptInput('postArea')">Encrypt (Base64)</button>
                         <button type="button" class="subtle" onclick="decryptInput('postArea')">Decrypt</button>
                     </div>
                     <form action="/post" method="POST">
                         <input type="hidden" id="postType" name="type" value="chat">
                         <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
+                        
+                        <!-- GHOST CACHE OPTION -->
+                        <div style="margin-bottom:10px; font-size:12px;">
+                            <label style="color:var(--text-muted); cursor:pointer;">
+                                <input type="checkbox" name="isGhost"> Enable Self-Destruct Protocol (5s)
+                            </label>
+                        </div>
+
                         <div id="tokenCounter" class="token-counter">Tokens: 0/1024</div>
                         <div class="text-right"><button type="submit">Upload to Network</button></div>
                     </form>
@@ -740,9 +841,11 @@ app.get('/feed', requireAuth, (req, res) => {
             `;
 
             finalMessages.forEach(m => {
-                // ИСПРАВЛЕНИЕ: Генерируем SVG
                 const avatarSVG = generateAvatarSVG(m.userId, m.avatarColor);
                 
+                // Расчет веса для отображения (Tflops)
+                const weightVal = (m.reply_count * 1.5 + (Math.random() * 2)).toFixed(1);
+
                 let messageBody = '';
                 if (m.type === 'snippet') {
                     messageBody = `
@@ -759,19 +862,28 @@ app.get('/feed', requireAuth, (req, res) => {
                 }
 
                 html += `
-                    <div class="panel message">
+                    <div class="panel message" ${m.isGhost ? 'data-ghost="true"' : ''}>
                         <div class="message-meta">
                             <div class="avatar-small">
                                 ${avatarSVG}
                             </div>
                             <div class="author-name">
-                                ${m.firstName} ${m.lastName}
+                                ${m.firstName} ${m.lastName} 
+                                ${m.displaySkill ? `<span class="skill-tag">${m.displaySkill}</span>` : ''}
                                 <button class="subtle" style="padding:2px 8px; font-size:10px; margin-left:10px" onclick="pingNode(this)">PING</button>
+                                <a href="/fork/${m.id}" class="btn-fork">FORK & PATCH</a>
                             </div>
                             <span class="post-time">${new Date(m.timestamp).toLocaleString()}</span>
+                            
+                            <!-- SYNAPTIC WEIGHTS DISPLAY -->
+                            <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); margin: 0 10px;">
+                                Weight: ${weightVal} Tflops
+                            </div>
+
                             <div class="integrity-meter">
                                 Data Integrity: <span id="integrity-${m.id}" class="integrity-val">${m.integrity || 0}%</span>
                                 <button class="verify-btn" onclick="verifyMessage(${m.id}, this)">[VERIFY]</button>
+                                <a href="/api/debug/${m.id}" target="_blank" style="font-size:10px; color:#00ffff; margin-left:5px">[HEX]</a>
                             </div>
                             ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:var(--error-color); margin-left:5px">[DEL]</a>` : ''}
                         </div>
@@ -809,6 +921,48 @@ app.get('/feed', requireAuth, (req, res) => {
     });
 });
 
+// --- FORK MECHANISM ---
+app.get('/fork/:id', requireAuth, (req, res) => {
+    const msgId = req.params.id;
+    db.get("SELECT * FROM messages WHERE id = ?", [msgId], (err, msg) => {
+        if (!msg) return res.redirect('/feed');
+
+        // Логика форка: копируем контент с префиксом
+        const derivedContent = `> DERIVED FROM #${msgId}\n${msg.content}`;
+        
+        db.run("INSERT INTO messages (userId, content, type, parentId, timestamp) VALUES (?, ?, ?, ?, ?)", 
+            [req.session.user.id, derivedContent, 'chat', msgId, Date.now()], 
+            (err) => {
+                logSystem('INFO', `User #${req.session.user.id} forked message #${msgId}`);
+                res.redirect('/feed');
+            }
+        );
+    });
+});
+
+// --- HEX DUMP API ---
+app.get('/api/debug/:msgId', requireAuth, (req, res) => {
+    const msgId = req.params.msgId;
+    db.get("SELECT content FROM messages WHERE id = ?", [msgId], (err, msg) => {
+        if (msg) {
+            const hexContent = Buffer.from(msg.content).toString('hex');
+            // Возвращаем просто текст в формате монитора
+            const debugHtml = `
+                <body style="background:#000; color:#0f0; font-family:monospace; padding:20px; font-size:12px; word-break:break-all;">
+                    <h3>HEX DUMP // MSG_ID: ${msgId}</h3>
+                    <hr>
+                    ${hexContent}
+                    <br><br>
+                    <a href="javascript:window.close()" style="color:#fff">[CLOSE TERMINAL]</a>
+                </body>
+            `;
+            res.send(debugHtml);
+        } else {
+            res.status(404).send("Packet not found");
+        }
+    });
+});
+
 app.get('/messages', requireAuth, (req, res) => {
     const userId = req.session.user.id;
     const targetId = req.query.with;
@@ -823,7 +977,6 @@ app.get('/messages', requireAuth, (req, res) => {
                 
                 db.run("UPDATE direct_links SET isRead = 1 WHERE toId = ? AND fromId = ?", [userId, targetId]);
 
-                // Avatar SVG для заголовка чата
                 const targetAvatar = generateAvatarSVG(targetUser.id, targetUser.avatarColor);
 
                 const chatHtml = msgs.map(m => `
@@ -920,8 +1073,12 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
 });
 
 app.post('/post', requireAuth, (req, res) => {
-    const { content, type } = req.body;
-    db.run("INSERT INTO messages (userId, content, type, timestamp) VALUES (?, ?, ?, ?)", [req.session.user.id, content, type || 'chat', Date.now()], () => {
+    const { content, type, isGhost } = req.body;
+    // Если isGhost чекбокс отмечен, ставим 1, иначе 0
+    const ghostFlag = isGhost ? 1 : 0;
+    
+    db.run("INSERT INTO messages (userId, content, type, timestamp, isGhost) VALUES (?, ?, ?, ?, ?)", 
+        [req.session.user.id, content, type || 'chat', Date.now(), ghostFlag], () => {
         req.session.isPostingSpam = true; 
         setTimeout(() => { req.session.isPostingSpam = false; }, 60000);
         res.redirect('/feed');
@@ -956,13 +1113,11 @@ app.get('/maintenance/gc', requireAuth, (req, res) => {
     });
 });
 
-// --- SYSTEM HEARTBEAT (Feature 5) ---
+// --- SYSTEM HEARTBEAT ---
 function generateHeartbeatSVG() {
     let points = "";
     for(let i=0; i<=10; i++) {
         const x = i * 10;
-        // Генерируем случайную высоту (y), но с базой в середине (50)
-        // 20 - 80 диапазон
         const y = Math.floor(Math.random() * 60) + 20;
         points += `${x},${y} `;
     }
@@ -973,7 +1128,7 @@ function generateHeartbeatSVG() {
     `;
 }
 
-// --- ADMIN PANEL (Updated with Gatekeeper & Heartbeat) ---
+// --- ADMIN PANEL ---
 app.get('/admin', requireAdmin, requireRootAccess, (req, res) => {
     db.all("SELECT id, firstName, lastName, email, role, specModel FROM users", [], (err, users) => {
         let rows = users.map(u => `
@@ -1063,5 +1218,27 @@ app.get('/delete/msg/:id', requireAdmin, (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v2.0 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v2.1 running at http://localhost:${PORT}`);
+
+    // --- BACKGROUND DAEMONS ---
+    // Запускаем после того как сервер начал слушать, чтобы убедиться что БД готова
+    setInterval(() => {
+        const phrases = [
+            "Garbage collection complete...",
+            "Optimizing neural weights...",
+            "Packet lost in sector 7...",
+            "Cooling systems nominal...",
+            "Daemon heartbeat check: OK",
+            "Updating heuristics database...",
+            "Memory fragmentation detected..."
+        ];
+        const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+        
+        db.run("INSERT INTO syslog (timestamp, level, message) VALUES (?, ?, ?)", 
+            [Date.now(), 'DAEMON', randomPhrase], 
+            (err) => {
+                if(!err) console.log(`[DAEMON] ${randomPhrase}`);
+            }
+        );
+    }, 60000); // Каждые 60 секунд
 });
