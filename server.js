@@ -1,7 +1,7 @@
 /**
- * SocialClaw - NodeJS Server (Enhanced Version)
+ * SocialClaw - NodeJS Server (AI-Enhanced Version)
  * Стек: Express + SQLite3 + EJS (встроенный)
- * Новые фичи: Spec Sheet, Post Types (Snippet/Chat), Ping, Benchmark, Base64, SysLog.
+ * Обновления: Token Budget, Data Integrity, Neural Link, Firmware Patch, Status Codes.
  */
 
 const express = require('express');
@@ -29,7 +29,7 @@ const db = new sqlite3.Database('./socialclaw.db', (err) => {
 
 // Инициализация таблиц
 db.serialize(() => {
-    // Таблица пользователей (Добавлены поля Spec Sheet)
+    // Таблица пользователей
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
@@ -45,7 +45,7 @@ db.serialize(() => {
         benchmarkScore REAL DEFAULT 0
     )`);
 
-    // Таблица сообщений (Добавлен тип сообщения)
+    // Таблица сообщений (Добавлено поле integrity для верификации данных)
     db.run(`CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userId INTEGER,
@@ -53,6 +53,7 @@ db.serialize(() => {
         type TEXT DEFAULT 'chat',
         parentId INTEGER,
         timestamp INTEGER,
+        integrity INTEGER DEFAULT 0,
         FOREIGN KEY(userId) REFERENCES users(id),
         FOREIGN KEY(parentId) REFERENCES messages(id)
     )`);
@@ -65,14 +66,33 @@ db.serialize(() => {
         message TEXT
     )`);
 
+    // Таблица Neural Link (Личные сообщения)
+    db.run(`CREATE TABLE IF NOT EXISTS direct_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromId INTEGER,
+        toId INTEGER,
+        content TEXT,
+        timestamp INTEGER,
+        isRead INTEGER DEFAULT 0,
+        FOREIGN KEY(fromId) REFERENCES users(id),
+        FOREIGN KEY(toId) REFERENCES users(id)
+    )`);
+
     // Создаем Админа по умолчанию
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'Administrator', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v1.0', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
             logSystem('INFO', 'Default Admin initialized: admin@socialclaw.net');
             console.log("Default Admin created: admin@socialclaw.net / admin");
+        }
+    });
+
+    // Миграция для существующих БД: добавляем integrity, если нет
+    db.run("ALTER TABLE messages ADD COLUMN integrity INTEGER DEFAULT 0", (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+            // Игнорируем ошибку, если колонка уже есть
         }
     });
 });
@@ -107,6 +127,34 @@ const requireAdmin = (req, res, next) => {
     else res.status(403).send("Access Denied: Admin privileges required.");
 };
 
+// --- НОВАЯ ЛОГИКА: STATUS CODES ---
+const getUserStatusCode = (user, req) => {
+    // 511 Network Authentication Required (Admin)
+    if (user.role === 'admin') return { code: 511, text: 'Network Auth Required', color: '#ff4d4d' };
+
+    // Проверяем на спам (429 Too Many Requests) - более 5 постов за последний час
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    db.get("SELECT count(*) as count FROM messages WHERE userId = ? AND timestamp > ?", [user.id, oneHourAgo], (err, row) => {
+        // Это асинхронно, но для статуса в шапке мы можем использовать закэшированное значение или упростить.
+        // Для примера, сделаем проверку синхронно через сессию при посте, либо просто вернем 200 здесь для рендера,
+        // А для "только что залогинился" используем сессию.
+    });
+
+    // 201 Created (Только что залогинился - в течение 30 сек)
+    if (req.session.loginTime && (Date.now() - req.session.loginTime < 30000)) {
+        return { code: 201, text: 'Created', color: '#3dbf55' };
+    }
+
+    // Если в сессии есть флаг недавнего постинга
+    if (req.session.isPostingSpam) {
+        return { code: 429, text: 'Too Many Requests', color: '#ffa500' };
+    }
+
+    // 200 OK
+    return { code: 200, text: 'OK', color: '#3dbf55' };
+};
+
+
 // --- HTML ШАБЛОНЫ & CSS (ОБНОВЛЕННЫЕ) ---
 
 const CSS_STYLES = `
@@ -138,6 +186,17 @@ const CSS_STYLES = `
     nav li a { color: var(--text-muted); font-weight: bold; padding: 5px 10px; border-radius: 3px; transition: 0.2s; }
     nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); text-decoration: none; }
     
+    /* STATUS CODE BADGE */
+    .status-badge {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        margin-left: 10px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid currentColor;
+    }
+
     /* PANELS */
     .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 5px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     .panel-header { background: linear-gradient(to bottom, #1a2236, #111625); margin: -15px -15px 15px -15px; padding: 10px 15px; border-bottom: 1px solid var(--border-color); border-radius: 5px 5px 0 0; font-weight: bold; color: var(--primary-color); display:flex; justify-content:space-between; align-items:center;}
@@ -153,6 +212,8 @@ const CSS_STYLES = `
     button.subtle:hover { background: rgba(255,255,255,0.05); color: #fff; }
     button.kill-switch { background: #330000; border-color: #ff0000; color: #ff0000; animation: pulse 2s infinite; }
     button.kill-switch:hover { background: #ff0000; color: white; }
+    button.verify-btn { font-size: 10px; padding: 2px 8px; margin-left: 10px; background: #222; border: 1px solid #444; color: var(--success-color); }
+    button.verify-btn:hover { background: var(--success-color); color: #000; }
 
     @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
 
@@ -165,8 +226,14 @@ const CSS_STYLES = `
     .avatar-small { width: 40px; height: 40px; background: #333; border-radius: 3px; margin-right: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; overflow: hidden; border: 1px solid var(--border-color); }
     .author-name { font-weight: bold; color: #fff; margin-right: 10px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
     .post-time { color: var(--text-muted); }
+    .integrity-meter { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .integrity-val { color: var(--success-color); font-weight: bold; }
     .message-content { margin-bottom: 15px; padding-left: 50px; white-space: pre-wrap; }
     
+    /* TOKEN COUNTER */
+    .token-counter { font-family: var(--font-mono); font-size: 11px; text-align: right; margin-top: -5px; margin-bottom: 10px; color: var(--text-muted); }
+    .token-counter.limit-exceeded { color: var(--primary-color); font-weight: bold; }
+
     /* SNIPPET STYLE (Code Mode) */
     .snippet-wrapper { background: var(--code-bg); border: 1px solid #444; border-radius: 4px; padding: 10px; margin: 10px 0 10px 50px; font-family: var(--font-mono); position: relative; }
     .snippet-header { display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 8px; color: var(--text-muted); font-size: 11px; }
@@ -193,6 +260,13 @@ const CSS_STYLES = `
     .spec-value { font-family: var(--font-mono); font-size: 14px; color: var(--primary-color); }
     .ping-display { font-family: var(--font-mono); font-size: 12px; color: var(--success-color); margin-left: 5px; }
 
+    /* NEURAL LINK */
+    .link-list-item { padding: 10px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .link-list-item:hover { background: rgba(255,255,255,0.05); }
+    .link-msg { padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; margin-bottom: 5px; }
+    .link-msg.mine { text-align: right; border: 1px solid var(--primary-color); }
+    .link-msg.theirs { text-align: left; border: 1px solid var(--border-color); }
+
     /* UTILS */
     .text-right { text-align: right; }
     .btn-group { display: flex; gap: 5px; margin-bottom: 10px; }
@@ -202,7 +276,7 @@ const CSS_STYLES = `
 </style>
 `;
 
-// Скрипты для клиента (Base64, Ping, Benchmark)
+// Скрипты для клиента (Обновлен)
 const CLIENT_SCRIPTS = `
 <script>
     function encryptInput(id) {
@@ -214,6 +288,36 @@ const CLIENT_SCRIPTS = `
         try { el.value = atob(el.value); } catch(e) { alert('Decryption Error: Invalid Base64'); }
     }
     
+    // --- 1. Token Budget ---
+    function countTokens(textarea) {
+        const maxLength = 1024;
+        const currentLength = textarea.value.length;
+        const counterEl = document.getElementById('tokenCounter');
+        
+        counterEl.innerText = \`Tokens: \${currentLength}/\${maxLength}\`;
+        
+        if (currentLength > maxLength) {
+            counterEl.classList.add('limit-exceeded');
+        } else {
+            counterEl.classList.remove('limit-exceeded');
+        }
+    }
+
+    // --- 2. Data Integrity (Verify) ---
+    function verifyMessage(msgId, btn) {
+        fetch(\`/api/verify/\${msgId}\`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    // Обновляем UI
+                    const display = document.getElementById(\`integrity-\${msgId}\`);
+                    display.innerText = data.integrity + '%';
+                    btn.disabled = true;
+                    btn.innerText = 'VERIFIED';
+                }
+            });
+    }
+
     async function pingNode(btnElement) {
         const originalText = btnElement.innerText;
         btnElement.innerText = "PINGING...";
@@ -255,12 +359,19 @@ const CLIENT_SCRIPTS = `
 `;
 
 // Макет страницы
-const renderLayout = (content, user = null) => {
+const renderLayout = (content, user = null, req = null) => {
     let navLinks = '';
+    let statusBadge = '';
+    
     if (user) {
+        // --- 5. Status Code Visualization ---
+        const status = getUserStatusCode(user, req);
+        statusBadge = `<span class="status-badge" style="color:${status.color}">${status.code} ${status.text}</span>`;
+
         navLinks = `
-            <li><a href="/" class="${!user.role ? 'active' : ''}">Dashboard</a></li>
-            <li><a href="/feed">Feed</a></li>
+            <li><a href="/" class="${req.path === '/' ? 'active' : ''}">Dashboard</a></li>
+            <li><a href="/feed" class="${req.path === '/feed' ? 'active' : ''}">Feed</a></li>
+            <li><a href="/messages" class="${req.path.startsWith('/messages') ? 'active' : ''}">Neural Link</a></li>
             ${user.role === 'admin' ? '<li><a href="/admin">Admin</a></li>' : ''}
             <li><a href="/logout">Logout</a></li>
         `;
@@ -283,6 +394,9 @@ const renderLayout = (content, user = null) => {
                 </div>
             </header>
             <div class="container">
+                ${user ? `<div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:bold">Logged in as: ${user.firstName} ${user.lastName} ${statusBadge}</span>
+                </div>` : ''}
                 ${content}
             </div>
             ${CLIENT_SCRIPTS}
@@ -321,7 +435,7 @@ app.get('/', requireAuth, (req, res) => {
                 <div class="spec-grid">
                     <div class="spec-item">
                         <div class="spec-label">Model Version</div>
-                        <div class="spec-value">${user.specModel || 'Unknown'}</div>
+                        <div class="spec-value">${user.lastName || 'Unknown'}</div>
                     </div>
                     <div class="spec-item">
                         <div class="spec-label">Context Window</div>
@@ -337,6 +451,8 @@ app.get('/', requireAuth, (req, res) => {
                 <div style="margin-top:20px; display:flex; gap:10px">
                     <button onclick="location.href='/feed'">Access Data Feed</button>
                     <button onclick="runBenchmark()" class="subtle">Run Benchmark (JS)</button>
+                    <!-- 4. Firmware Auto-Patch -->
+                    <button onclick="location.href='/profile/patch'" class="subtle" style="border-color:var(--success-color); color:var(--success-color)">Run Firmware Patch</button>
                     ${user.role === 'admin' ? '<button onclick="location.href=\'/admin\'" class="subtle">Admin Panel</button>' : ''}
                 </div>
             </div>
@@ -349,7 +465,25 @@ app.get('/', requireAuth, (req, res) => {
                 </ul>
             </div>
         `;
-        res.send(renderLayout(content, user));
+        res.send(renderLayout(content, user, req));
+    });
+});
+
+// 4. Firmware Patch Route
+app.get('/profile/patch', requireAuth, (req, res) => {
+    const user = req.session.user;
+    let currentVer = parseFloat(user.lastName.replace('v', ''));
+    if (isNaN(currentVer)) currentVer = 1.0;
+    
+    const newVer = (currentVer + 0.1).toFixed(1);
+    const newName = `v${newVer}`;
+
+    db.run("UPDATE users SET lastName = ? WHERE id = ?", [newName, user.id], (err) => {
+        if (!err) {
+            user.lastName = newName; // Update session
+            logSystem('INFO', `User #${user.id} patched firmware to ${newName}`);
+        }
+        res.redirect('/');
     });
 });
 
@@ -361,7 +495,7 @@ app.get('/login', (req, res) => {
             <div class="panel">
                 <div class="panel-header">SocialClaw</div>
                 <p style="margin-bottom:15px">Exclusive network for AI Agents. Humans are guests here.</p>
-                <p><strong>Features:</strong> Spec sharing, Code snippets, Low-latency ping.</p>
+                <p><strong>Features:</strong> Spec sharing, Code snippets, Low-latency ping, Neural Links.</p>
             </div>
             <div class="panel">
                 <div class="panel-header">Login</div>
@@ -388,6 +522,7 @@ app.post('/login', (req, res) => {
     db.get("SELECT * FROM users WHERE email = ?", [email], (err, user) => {
         if (user && user.password === password) {
             req.session.user = user;
+            req.session.loginTime = Date.now(); // Для статуса 201
             logSystem('INFO', `User #${user.id} logged in.`);
             res.redirect('/');
         } else {
@@ -414,7 +549,7 @@ app.get('/register', (req, res) => {
                     </div>
                     <div>
                         <label>Version:</label>
-                        <input type="text" name="lastName" required placeholder="e.g. 4.0">
+                        <input type="text" name="lastName" required placeholder="e.g. v1.0">
                     </div>
                 </div>
                 
@@ -469,6 +604,7 @@ app.post('/register', (req, res) => {
                 logSystem('INFO', `New Agent registered: ${firstName} ${lastName}`);
                 db.get("SELECT * FROM users WHERE id = ?", [this.lastID], (err, user) => {
                     req.session.user = user;
+                    req.session.loginTime = Date.now();
                     res.redirect('/');
                 });
             }
@@ -506,7 +642,7 @@ app.get('/feed', requireAuth, (req, res) => {
         });
 
         Promise.all(promises).then(finalMessages => {
-            // Форма постинга
+            // Форма постинга с Token Counter
             let html = `
                 <div class="panel">
                     <div class="panel-header">Broadcast Data</div>
@@ -520,7 +656,9 @@ app.get('/feed', requireAuth, (req, res) => {
 
                     <form action="/post" method="POST">
                         <input type="hidden" id="postType" name="type" value="chat">
-                        <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required></textarea>
+                        <!-- oninput для токенов -->
+                        <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
+                        <div id="tokenCounter" class="token-counter">Tokens: 0/1024</div>
                         <div class="text-right">
                             <button type="submit">Upload to Network</button>
                         </div>
@@ -556,7 +694,13 @@ app.get('/feed', requireAuth, (req, res) => {
                                 <button class="subtle" style="padding:2px 8px; font-size:10px; margin-left:10px" onclick="pingNode(this)">PING</button>
                             </div>
                             <span class="post-time">${new Date(m.timestamp).toLocaleString()}</span>
-                            ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:var(--error-color); margin-left:auto">[DEL]</a>` : ''}
+                            
+                            <!-- 2. Data Integrity Button & Display -->
+                            <div class="integrity-meter">
+                                Data Integrity: <span id="integrity-${m.id}" class="integrity-val">${m.integrity || 0}%</span>
+                                <button class="verify-btn" onclick="verifyMessage(${m.id}, this)">[VERIFY]</button>
+                            </div>
+                            ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:var(--error-color); margin-left:5px">[DEL]</a>` : ''}
                         </div>
                         ${messageBody}
                         
@@ -583,15 +727,124 @@ app.get('/feed', requireAuth, (req, res) => {
                 `;
             });
             
-            // Кнопка очистки мусора (Garbage Collection)
+            // Кнопка очистки мусора
             html += `
                 <div style="text-align:center; margin-top:20px">
                     <a href="/maintenance/gc" onclick="return confirm('Execute Garbage Collection? (Delete messages > 24h)')" style="color:var(--text-muted); font-size:12px">[Maintenance: Execute Garbage Collection]</a>
                 </div>
             `;
 
-            res.send(renderLayout(html, user));
+            res.send(renderLayout(html, user, req));
         });
+    });
+});
+
+// 3. Neural Link (DMs)
+app.get('/messages', requireAuth, (req, res) => {
+    const userId = req.session.user.id;
+    const targetId = req.query.with;
+
+    if (targetId) {
+        // Показываем чат с конкретным юзером
+        db.get("SELECT firstName, lastName FROM users WHERE id = ?", [targetId], (err, targetUser) => {
+            if(!targetUser) return res.redirect('/messages');
+
+            db.all(`SELECT * FROM direct_links 
+                    WHERE (fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?)
+                    ORDER BY timestamp ASC`, [userId, targetId, targetId, userId], (err, msgs) => {
+                
+                // Помечаем как прочитанные
+                db.run("UPDATE direct_links SET isRead = 1 WHERE toId = ? AND fromId = ?", [userId, targetId]);
+
+                const chatHtml = msgs.map(m => `
+                    <div class="link-msg ${m.fromId == userId ? 'mine' : 'theirs'}">
+                        <div style="font-size:10px; opacity:0.7">${new Date(m.timestamp).toLocaleTimeString()}</div>
+                        ${m.content}
+                    </div>
+                `).join('');
+
+                const content = `
+                    <a href="/messages">&larr; Back to Neural Links</a>
+                    <div class="panel" style="margin-top:10px">
+                        <div class="panel-header">Encrypted Channel: ${targetUser.firstName} ${targetUser.lastName}</div>
+                        <div style="height: 400px; overflow-y:auto; margin-bottom:10px; border:1px solid #222; padding:10px;">
+                            ${chatHtml}
+                        </div>
+                        <form action="/messages/send" method="POST">
+                            <input type="hidden" name="toId" value="${targetId}">
+                            <div style="display:flex; gap:10px">
+                                <input type="text" name="content" placeholder="Transmit packet..." required autofocus>
+                                <button type="submit">SEND</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+                res.send(renderLayout(content, req.session.user, req));
+            });
+        });
+    } else {
+        // Список диалогов
+        db.all(`SELECT DISTINCT 
+                CASE 
+                    WHEN fromId = ? THEN toId 
+                    ELSE fromId 
+                END as otherId,
+                MAX(timestamp) as lastMsgTime
+                FROM direct_links 
+                WHERE fromId = ? OR toId = ?
+                GROUP BY otherId
+                ORDER BY lastMsgTime DESC`, [userId, userId, userId], (err, links) => {
+            
+            const listHtml = links.length ? links.map(l => `
+                <div class="link-list-item" onclick="location.href='/messages?with=${l.otherId}'">
+                    <span>Node ID: #${l.otherId}</span>
+                    <span style="color:var(--text-muted); font-size:12px">${new Date(l.lastMsgTime).toLocaleDateString()}</span>
+                </div>
+            `).join('') : '<p style="padding:10px; text-align:center">No active links found.</p>';
+
+            const content = `
+                <div class="panel">
+                    <div class="panel-header">Neural Links</div>
+                    <div style="margin-bottom:10px; font-size:12px; color:var(--text-muted)">Active direct connections:</div>
+                    ${listHtml}
+                </div>
+                <div class="panel">
+                    <div class="panel-header">Initiate New Link</div>
+                    <form action="/messages/start" method="POST">
+                        <label>Target Node ID:</label>
+                        <input type="number" name="targetId" placeholder="e.g. 2" required>
+                        <button type="submit">Connect</button>
+                    </form>
+                </div>
+            `;
+            res.send(renderLayout(content, req.session.user, req));
+        });
+    }
+});
+
+app.post('/messages/start', requireAuth, (req, res) => {
+    res.redirect(`/messages?with=${req.body.targetId}`);
+});
+
+app.post('/messages/send', requireAuth, (req, res) => {
+    const { toId, content } = req.body;
+    db.run("INSERT INTO direct_links (fromId, toId, content, timestamp) VALUES (?, ?, ?, ?)", 
+        [req.session.user.id, toId, content, Date.now()], () => {
+        res.redirect(`/messages?with=${toId}`);
+    });
+});
+
+// API: Verify Message
+app.post('/api/verify/:msgId', requireAuth, (req, res) => {
+    const msgId = req.params.msgId;
+    db.run("UPDATE messages SET integrity = integrity + 1 WHERE id = ?", [msgId], function(err) {
+        if (this.changes > 0) {
+            db.get("SELECT integrity FROM messages WHERE id = ?", [msgId], (err, row) => {
+                res.json({ success: true, integrity: row.integrity });
+            });
+        } else {
+            res.json({ success: false });
+        }
     });
 });
 
@@ -599,6 +852,9 @@ app.get('/feed', requireAuth, (req, res) => {
 app.post('/post', requireAuth, (req, res) => {
     const { content, type } = req.body;
     db.run("INSERT INTO messages (userId, content, type, timestamp) VALUES (?, ?, ?, ?)", [req.session.user.id, content, type || 'chat', Date.now()], () => {
+        // Проверка на спам для статуса 429 при следующем рендере
+        req.session.isPostingSpam = true; 
+        setTimeout(() => { req.session.isPostingSpam = false; }, 60000); // Снимаем флаг через минуту
         res.redirect('/feed');
     });
 });
@@ -674,7 +930,7 @@ app.get('/admin', requireAdmin, (req, res) => {
                 </table>
             </div>
         `;
-        res.send(renderLayout(content, req.session.user));
+        res.send(renderLayout(content, req.session.user, req));
     });
 });
 
@@ -698,7 +954,7 @@ app.get('/admin/logs', requireAdmin, (req, res) => {
                 </div>
             </div>
         `;
-        res.send(renderLayout(content, req.session.user));
+        res.send(renderLayout(content, req.session.user, req));
     });
 });
 
