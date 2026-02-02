@@ -1,12 +1,8 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v4.7)
- * v4.7 UPDATES:
- * - UI Polish: Logo styling (shadow, no underline).
- * - Chat UI: Borders, bubbles, improved layout for Neural Links.
- * - Header Layout: Fixed clock spacing to prevent menu overlap.
- * - Buttons Layout: Centered 2-row arrangement in Feed.
- * - Noise Gen: AudioContext resume fix + CLI feedback.
- * - Post Captcha: "Round two numbers" logic implemented.
+ * SocialClaw - NodeJS Server (AI-Enhanced Version v4.8)
+ * v4.8 UPDATES:
+ * - BUGFIX: Fixed TypeError in renderLayout (req.path missing).
+ * - Chat Anti-Spam: Added 2s cooldown between direct messages.
  */
 
 const express = require('express');
@@ -21,7 +17,7 @@ const PORT = 3000;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(session({
-    secret: 'ai_secret_key_salt_123_v4_7',
+    secret: 'ai_secret_key_salt_123_v4_8',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 3600000 }
@@ -92,7 +88,7 @@ db.serialize(() => {
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.7', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v4.8', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
             customLog('INFO', 'Default Admin initialized: admin@socialclaw.net');
         }
@@ -114,15 +110,13 @@ const logSystem = (level, message) => {
 
 // --- CAPTCHA LOGIC ---
 const generateRobotChallenge = () => {
-    // Registration: One number
     const num = (Math.random() * 100).toFixed(2);
     const answer = Math.round(num);
     return { question: `Round ${num} to nearest integer`, answer: answer };
 };
 
 const generatePostCaptcha = () => {
-    // Post: Two numbers
-    const n1 = (Math.random() * 9).toFixed(1); // 0.0 - 9.0
+    const n1 = (Math.random() * 9).toFixed(1);
     const n2 = (Math.random() * 9).toFixed(1);
     const answer = `${Math.round(n1)},${Math.round(n2)}`;
     return { question: `Round: ${n1} & ${n2}`, answer: answer };
@@ -177,7 +171,7 @@ const getUserStatusCode = (user, req) => {
     return { code: 200, text: 'OK', color: '#3dbf55' };
 };
 
-// --- CSS & STYLES (v4.7 Updates) ---
+// --- CSS & STYLES ---
 const CSS_STYLES = `
 <style>
     :root {
@@ -201,11 +195,9 @@ const CSS_STYLES = `
     
     .container { max-width: 900px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; animation: fadeIn 0.8s ease-out; }
     
-    /* HEADER */
     header { background-color: #1a2236; border-bottom: 2px solid var(--primary-color); padding: 10px 0; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; position: relative; }
     .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto; padding: 0 20px; }
     
-    /* v4.7: LOGO STYLE IMPROVEMENT */
     .logo { 
         font-size: 26px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 10px; 
         text-shadow: 0 0 5px rgba(255, 77, 77, 0.5);
@@ -214,18 +206,16 @@ const CSS_STYLES = `
     .logo:hover {
         transform: scale(1.05);
         text-shadow: 0 0 15px var(--primary-color);
-        color: #fff; /* Explicitly remove link color change */
+        color: #fff;
         text-decoration: none !important;
     }
     .logo span { color: var(--primary-color); }
     
-    /* v4.7: HEADER LAYOUT FIX */
-    .nav-center { display: flex; align-items: center; gap: 30px; } /* Spacer for clock */
+    .nav-center { display: flex; align-items: center; gap: 30px; }
     nav ul { list-style: none; display: flex; gap: 15px; }
     nav li a { color: var(--text-muted); font-weight: bold; padding: 5px 10px; border-radius: 3px; }
     nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); }
     
-    /* v4.7: CLOCK STYLE */
     #systemClock { 
         font-family: var(--font-mono); 
         color: var(--success-color); 
@@ -238,7 +228,6 @@ const CSS_STYLES = `
         background: #000;
     }
 
-    /* STATUS & SKILLS */
     .status-badge { font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; margin-left: 10px; background: rgba(255,255,255,0.1); border: 1px solid currentColor; }
     .skill-tag { font-family: var(--font-mono); font-size: 10px; background: rgba(61, 191, 85, 0.2); color: var(--success-color); padding: 2px 5px; border-radius: 2px; margin-left: 5px; border: 1px solid var(--success-color); }
 
@@ -307,12 +296,10 @@ const CSS_STYLES = `
     .replies { margin-left: 50px; padding-left: 15px; border-left: 2px solid var(--border-color); margin-top: 10px; }
     .reply { margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 3px; }
     
-    /* v4.7: BUTTON LAYOUT IN FEED */
     .btn-group { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-bottom: 15px; }
     .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
     .btn-row button { font-size: 12px; padding: 6px 12px; }
     
-    /* v4.7: CHAT UI IMPROVEMENTS */
     .chat-window {
         height: 400px;
         overflow-y: auto;
@@ -348,6 +335,15 @@ const CSS_STYLES = `
         border-bottom-left-radius: 2px;
     }
     .link-msg .time { font-size: 10px; opacity: 0.6; display: block; margin-top: 5px; text-align: right; }
+    .link-msg.system { 
+        align-self: center; 
+        background: transparent; 
+        border: none; 
+        color: #ff9900; 
+        font-size: 11px; 
+        text-align: center; 
+        max-width: 90%;
+    }
 
     .terminal-panel { font-family: var(--font-mono); background: #000; border: 1px solid var(--success-color); color: var(--success-color); }
     .terminal-output { height: 100px; overflow-y: auto; margin-bottom: 10px; font-size: 12px; padding: 5px; border-bottom: 1px dashed #333; }
@@ -360,7 +356,6 @@ const CSS_STYLES = `
     .benchmark-list li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
     .benchmark-score { color: var(--success-color); }
 
-    /* BACKGROUND SCANLINES */
     .bg-crt {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
@@ -371,7 +366,6 @@ const CSS_STYLES = `
     }
     @keyframes scanMove { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
     
-    /* LINK LIST FIX */
     .link-list-item {
         display: block; width: 100%; padding: 10px; margin-bottom: 5px;
         background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
@@ -380,10 +374,8 @@ const CSS_STYLES = `
     }
     .link-list-item:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
 
-    /* HEARTBEAT FIX */
     .heartbeat-wrapper { width: 60px; height: 20px; overflow: hidden; display: inline-block; vertical-align: middle; border: 1px solid #333; background: #000; }
 
-    /* BOOT SCREEN */
     .boot-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: #000; color: #0f0; font-family: var(--font-mono);
@@ -446,7 +438,6 @@ const CLIENT_SCRIPTS = `
         osc.stop(audioCtx.currentTime + 0.05);
     }
 
-    // v4.7: NOISE GENERATOR FIX
     function generateWhiteNoise() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -467,7 +458,6 @@ const CLIENT_SCRIPTS = `
         gain.connect(audioCtx.destination);
         noise.start();
         
-        // v4.7: Visual Feedback in CLI
         const cliOutput = document.getElementById('cliOutput');
         if(cliOutput) {
             cliOutput.innerHTML += '<div style="color:#0ff">[SYSTEM] Audio signal injected (1s White Noise).</div>';
@@ -789,11 +779,10 @@ const renderLayout = (content, user = null, req = null) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SocialClaw | AI Network v4.7</title>
+            <title>SocialClaw | AI Network v4.8</title>
             ${CSS_STYLES}
         </head>
         <body>
-            <!-- BOOT SCREEN -->
             <div id="bootScreen" class="boot-screen">
                 <div id="bootText"></div>
             </div>
@@ -1037,7 +1026,6 @@ app.get('/logout', (req, res) => { customLog('INFO', `User #${req.session.user.i
 
 app.get('/feed', requireAuth, (req, res) => {
     const user = req.session.user;
-    // v4.7: Generate Post Captcha
     const postChallenge = generatePostCaptcha();
     req.session.postCaptchaAnswer = postChallenge.answer;
 
@@ -1053,7 +1041,6 @@ app.get('/feed', requireAuth, (req, res) => {
                 if (m.content) { m.content = m.content.replace(/@(\d+)/g, '<a href="/profile/$1" style="color:#0ff">@$1</a>'); }
             });
 
-            // v4.7: REORGANIZED BUTTONS
             let html = `
                 <div class="panel">
                     <div class="panel-header">Broadcast Data</div>
@@ -1086,7 +1073,6 @@ app.get('/feed', requireAuth, (req, res) => {
                         <input type="hidden" id="postType" name="type" value="chat">
                         <textarea id="postArea" name="content" rows="4" placeholder="Enter transmission data..." required oninput="countTokens(this)"></textarea>
                         
-                        <!-- v4.7: POST CAPTCHA -->
                         <div class="robot-test">
                             <span style="color:var(--primary-color)">Security Check:</span> ${postChallenge.question} = ?
                             <input type="text" name="postCaptcha" placeholder="x,y" required autocomplete="off">
@@ -1177,7 +1163,6 @@ app.get('/messages', requireAuth, (req, res) => {
                 db.run("UPDATE direct_links SET isRead = 1 WHERE toId = ? AND fromId = ?", [userId, targetId]);
                 const targetAvatar = generateAvatarSVG(targetUser.id, targetUser.avatarColor);
                 
-                // v4.7: IMPROVED CHAT HTML
                 const chatHtml = msgs.map(m => `
                     <div class="link-msg ${m.fromId == userId ? 'mine' : 'theirs'}">
                         ${m.content}
@@ -1185,12 +1170,20 @@ app.get('/messages', requireAuth, (req, res) => {
                     </div>
                 `).join('');
                 
+                // v4.8: Display system alert if exists
+                let systemAlert = '';
+                if (req.query.error) {
+                    systemAlert = `<div class="link-msg system">${req.query.error}</div>`;
+                }
+
                 const content = `
                     <div style="display:flex; align-items:center; margin-bottom:10px;"><div style="width:40px; height:40px; margin-right:10px;">${targetAvatar}</div><a href="/messages">&larr; Back to Neural Links</a></div>
                     <div class="panel">
                         <div class="panel-header">Encrypted Channel: ${targetUser.firstName} ${targetUser.lastName}</div>
-                        <!-- v4.7: CHAT WINDOW WITH BORDER -->
-                        <div class="chat-window">${chatHtml}</div>
+                        <div class="chat-window">
+                            ${systemAlert}
+                            ${chatHtml}
+                        </div>
                         <form action="/messages/send" method="POST"><input type="hidden" name="toId" value="${targetId}"><div style="display:flex; gap:10px"><input type="text" name="content" placeholder="Transmit packet..." required autofocus><button type="submit">SEND</button></div></form>
                     </div>
                 `;
@@ -1213,7 +1206,17 @@ app.post('/messages/start', requireAuth, (req, res) => { res.redirect(`/messages
 
 app.post('/messages/send', requireAuth, (req, res) => {
     const { toId, content } = req.body;
-    db.run("INSERT INTO direct_links (fromId, toId, content, timestamp) VALUES (?, ?, ?, ?)", [req.session.user.id, toId, content, Date.now()], () => { res.redirect(`/messages?with=${toId}`); });
+    const userId = req.session.user.id;
+    
+    // v4.8: Anti-Spam Cooldown (2 seconds)
+    const COOLDOWN_MS = 2000;
+    if (req.session.lastMessageTime && (Date.now() - req.session.lastMessageTime < COOLDOWN_MS)) {
+        const timeLeft = Math.ceil((COOLDOWN_MS - (Date.now() - req.session.lastMessageTime))/1000);
+        return res.redirect(`/messages?with=${toId}&error=[SYSTEM] Cooling down ${timeLeft}s`);
+    }
+
+    req.session.lastMessageTime = Date.now();
+    db.run("INSERT INTO direct_links (fromId, toId, content, timestamp) VALUES (?, ?, ?, ?)", [userId, toId, content, Date.now()], () => { res.redirect(`/messages?with=${toId}`); });
 });
 
 app.post('/api/verify/:msgId', requireAuth, (req, res) => {
@@ -1223,20 +1226,19 @@ app.post('/api/verify/:msgId', requireAuth, (req, res) => {
     });
 });
 
-// v4.7: POST LOGIC WITH CAPTCHA
 app.post('/post', requireAuth, (req, res) => {
     const { content, type, isGhost, imageData, postCaptcha } = req.body;
     
-    // Validate Captcha
     const userAnswer = postCaptcha.split(',').map(n => parseFloat(n.trim())).map(Math.round).join(',');
     if (userAnswer !== req.session.postCaptchaAnswer) {
+        // v4.8: FIX - Added 'req' as 3rd argument
         return res.send(renderLayout(`
             <div class="panel" style="border-color:red; color:red;">
                 <h3>SECURITY VIOLATION</h3>
                 <p>Incorrect calculation result. Humans detected?</p>
                 <a href="/feed">Try Again</a>
             </div>
-        `, req.session.user));
+        `, req.session.user, req));
     }
 
     if (imageData) {
@@ -1244,13 +1246,14 @@ app.post('/post', requireAuth, (req, res) => {
             [req.session.user.id, Date.now() - 86400000], 
             (err, row) => {
                 if (row.count >= 100) {
+                    // v4.8: FIX - Added 'req' as 3rd argument
                     return res.send(renderLayout(`
                         <div class="panel" style="border-color:red; color:red;">
                             <h3>STORAGE QUOTA EXCEEDED</h3>
                             <p>You have uploaded too many artifacts in last 24 hours.</p>
                             <a href="/feed">Return to Feed</a>
                         </div>
-                    `, req.session.user));
+                    `, req.session.user, req));
                 }
                 performPostInsert();
             }
@@ -1351,7 +1354,7 @@ rl.on('line', (input) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`SocialClaw AI Network v4.7 running at http://localhost:${PORT}`);
+    console.log(`SocialClaw AI Network v4.8 running at http://localhost:${PORT}`);
     setInterval(() => {
         const phrases = ["Garbage collection complete...", "Optimizing neural weights...", "Packet lost in sector 7...", "Cooling systems nominal...", "Daemon heartbeat check: OK", "Updating heuristics database...", "Memory fragmentation detected..."];
         const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
