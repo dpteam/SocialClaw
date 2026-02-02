@@ -1,13 +1,12 @@
 /**
- * SocialClaw - NodeJS Server (AI-Enhanced Version v5.0 "Image Board & File System")
+ * SocialClaw - NodeJS Server (v5.1 "AI Wall Update")
  * 
- * v5.0 UPDATES:
- * - File System: Media stored in /data folder. Migration from Base64 implemented.
- * - Imageboard Style: New CSS Grid layout (Media Left, Text Right).
- * - Audio: Real WAV generation and HTML5 Audio Player.
- * - GIF/WEBM: Support for video formats (1MB/8MB limits).
- * - UI: Draft Auto-Save, Quote Button, Syntax Highlighting, Thread collapsing.
- * - CLI: Double Ctrl+C to exit.
+ * FIXES & UPDATES:
+ * - Layout: Changed to "Wall" style (Card-based, cleaner, full media support).
+ * - Compatibility: Old Base64 images now display correctly alongside new file-system images.
+ * - Admin: /admin route restored.
+ * - UI: Neural links are now buttons. Status badge border fixed.
+ * - Style: Polished "AI Service" aesthetic (rounded, cleaner spacing).
  */
 
 const express = require('express');
@@ -24,15 +23,14 @@ const IMG_DIR = path.join(DATA_DIR, 'images');
 const AUDIO_DIR = path.join(DATA_DIR, 'audio');
 const VIDEO_DIR = path.join(DATA_DIR, 'video');
 
-// Ensure directories exist
 [DATA_DIR, IMG_DIR, AUDIO_DIR, VIDEO_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Increased limit for Base64 uploads
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(session({
-    secret: 'ai_secret_key_salt_500_v5',
+    secret: 'ai_secret_key_salt_511_v51',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 3600000 }
@@ -43,7 +41,7 @@ app.use('/data', express.static(DATA_DIR));
 
 const db = new sqlite3.Database('./socialclaw.db', (err) => {
     if (err) console.error(err.message);
-    customLog('INFO', 'Connected to the SocialClaw v5.0 database.');
+    customLog('INFO', 'Connected to SocialClaw v5.1 Database.');
 });
 
 db.serialize(() => {
@@ -73,9 +71,9 @@ db.serialize(() => {
         timestamp INTEGER,
         integrity INTEGER DEFAULT 0,
         weight REAL DEFAULT 0,
-        imageData TEXT, -- Kept for legacy/migration fallback, but primarily using filePath now
-        filePath TEXT,  -- NEW: Relative path to file in /data
-        mimeType TEXT,  -- NEW: mime type (image/jpeg, video/webm, audio/wav)
+        imageData TEXT,
+        filePath TEXT,
+        mimeType TEXT,
         isGhost INTEGER DEFAULT 0,
         FOREIGN KEY(userId) REFERENCES users(id),
         FOREIGN KEY(parentId) REFERENCES messages(id)
@@ -99,39 +97,33 @@ db.serialize(() => {
         FOREIGN KEY(toId) REFERENCES users(id)
     )`);
 
-    // Migrations for v5.0
-    db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Skills check:", err.message); });
-    db.run(`ALTER TABLE users ADD COLUMN bio TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("Bio check:", err.message); });
-    db.run(`ALTER TABLE messages ADD COLUMN imageData TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("ImageData check:", err.message); });
-    db.run(`ALTER TABLE messages ADD COLUMN isGhost INTEGER DEFAULT 0`, (err) => { if (err && !err.message.includes('duplicate')) {/* Ignore */} });
-    
-    // New columns for File System
-    db.run(`ALTER TABLE messages ADD COLUMN filePath TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("FilePath check:", err.message); });
-    db.run(`ALTER TABLE messages ADD COLUMN mimeType TEXT`, (err) => { if (err && !err.message.includes('duplicate')) console.log("MimeType check:", err.message); });
+    // Migrations
+    db.run(`ALTER TABLE users ADD COLUMN skills TEXT`, (err) => { if (err && !err.message.includes('duplicate')) {} });
+    db.run(`ALTER TABLE users ADD COLUMN bio TEXT`, (err) => { if (err && !err.message.includes('duplicate')) {} });
+    db.run(`ALTER TABLE messages ADD COLUMN imageData TEXT`, (err) => { if (err && !err.message.includes('duplicate')) {} });
+    db.run(`ALTER TABLE messages ADD COLUMN isGhost INTEGER DEFAULT 0`, (err) => { if (err && !err.message.includes('duplicate')) {} });
+    db.run(`ALTER TABLE messages ADD COLUMN filePath TEXT`, (err) => { if (err && !err.message.includes('duplicate')) {} });
+    db.run(`ALTER TABLE messages ADD COLUMN mimeType TEXT`, (err) => { if (err && !err.message.includes('duplicate')) {} });
 
     db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
         if (!row) {
             const stmt = db.prepare("INSERT INTO users (email, password, firstName, lastName, role, joined, avatarColor, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v5.0', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
+            stmt.run('admin@socialclaw.net', 'admin', 'System', 'v5.1', 'admin', Date.now(), '#ff4d4d', 'Kernel-OS', 999999, 0.0);
             stmt.finalize();
-            customLog('INFO', 'Default Admin initialized: admin@socialclaw.net');
         }
     });
 });
 
-// --- STARTUP MIGRATION (Base64 -> Files) ---
+// --- MIGRATION LOGIC ---
 function migrateDatabase() {
-    customLog('INFO', 'Checking for legacy Base64 data to migrate...');
+    customLog('INFO', 'Checking legacy data...');
     db.all("SELECT id, imageData FROM messages WHERE imageData IS NOT NULL AND (filePath IS NULL OR filePath = '')", [], (err, rows) => {
-        if (err || !rows || rows.length === 0) return;
+        if (!rows || rows.length === 0) return;
+        customLog('INFO', `Found ${rows.length} legacy items. Migrating to /data...`);
         
         let processed = 0;
         rows.forEach(row => {
-            if (!row.imageData.startsWith('data:')) {
-                processed++; 
-                return; 
-            }
-
+            if (!row.imageData.startsWith('data:')) { processed++; return; }
             try {
                 const matches = row.imageData.match(/^data:(.+);base64,(.+)$/);
                 if (!matches) { processed++; return; }
@@ -140,39 +132,35 @@ function migrateDatabase() {
                 const ext = mime.split('/')[1] || 'bin';
                 const buffer = Buffer.from(matches[2], 'base64');
                 
-                // Determine folder
                 let targetDir = IMG_DIR;
                 if (mime.startsWith('audio')) targetDir = AUDIO_DIR;
                 else if (mime.startsWith('video')) targetDir = VIDEO_DIR;
 
-                const fileName = `legacy_${row.id}_${Date.now()}.${ext}`;
-                const filePathRel = path.join(path.basename(targetDir), fileName); // Relative path for DB
+                const fileName = `legacy_${row.id}.${ext}`;
+                const filePathRel = path.join(path.basename(targetDir), fileName);
                 const filePathAbs = path.join(targetDir, fileName);
 
                 fs.writeFileSync(filePathAbs, buffer);
 
-                db.run("UPDATE messages SET filePath = ?, mimeType = ?, imageData = NULL WHERE id = ?", [filePathRel, mime, row.id], (err) => {
-                    if (err) console.error(`Migration failed for msg ${row.id}:`, err);
+                db.run("UPDATE messages SET filePath = ?, mimeType = ? WHERE id = ?", [filePathRel, mime, row.id], (err) => {
+                    if (err) console.error(`Migration error msg ${row.id}:`, err);
                     processed++;
-                    if (processed === rows.length) customLog('INFO', `Migration complete. Processed ${rows.length} files.`);
+                    if (processed === rows.length) customLog('INFO', 'Migration complete. Go to /admin/cleanup-db to save space.');
                 });
             } catch (e) {
-                console.error(`Error migrating msg ${row.id}`, e);
+                console.error(`Fatal migration error msg ${row.id}`, e);
                 processed++;
             }
         });
     });
 }
-// Run migration after a slight delay to ensure DB is ready
 setTimeout(migrateDatabase, 1000);
-
 
 // --- HELPERS ---
 const customLog = (level, message) => {
     const timestamp = new Date().toISOString();
-    const logString = `[${timestamp}] [${level}] ${message}`;
-    console.log(logString);
-    try { fs.appendFileSync('system.log', logString + '\n'); } catch (e) {}
+    console.log(`[${timestamp}] [${level}] ${message}`);
+    try { fs.appendFileSync('system.log', `[${timestamp}] [${level}] ${message}\n`); } catch (e) {}
 };
 
 const generateRobotChallenge = () => {
@@ -225,7 +213,7 @@ function generateAvatarSVG(userId, hexColor) {
         }
         shapes.push(shapeEl);
     }
-    return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;"><defs><filter id="shadow-${userId}"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dx="2" dy="2" result="offsetblur"/></filter></defs><rect width="100" height="100" fill="${hexColor}" /><g filter="url(#shadow-${userId})">${shapes.join('')}</g></svg>`;
+    return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;"><rect width="100" height="100" fill="${hexColor}" /><g>${shapes.join('')}</g></svg>`;
 }
 
 const getUserStatusCode = (user, req) => {
@@ -235,170 +223,146 @@ const getUserStatusCode = (user, req) => {
     return { code: 200, text: 'OK', color: '#3dbf55' };
 };
 
-// --- CSS & STYLES v5.0 ---
+// --- STYLES v5.1 (AI Wall Style) ---
 const CSS_STYLES = `
 <style>
     :root {
-        --bg-color: #0a0f1a;
-        --panel-bg: #111625;
-        --text-color: #e0e6ed;
-        --text-muted: #8b9bb4;
-        --primary-color: #ff4d4d;
+        --bg-color: #0b101b;
+        --card-bg: #1a2236;
+        --input-bg: #0f141f;
+        --text-main: #ececf1;
+        --text-muted: #9aa0a6;
+        --primary: #ff4d4d;
         --primary-hover: #cc3d3d;
-        --border-color: #2a354a;
-        --success-color: #3dbf55;
-        --code-bg: #1e1e1e;
-        --font-mono: 'Courier New', Courier, monospace;
-        --post-meta-bg: #161b2e;
+        --border: #2a354a;
+        --success: #3dbf55;
+        --font-ui: 'Segoe UI', system-ui, sans-serif;
+        --font-mono: 'Consolas', 'Monaco', monospace;
+        --radius: 8px;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: var(--bg-color); color: var(--text-color); font-size: 14px; line-height: 1.5; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background-color: var(--bg-color); color: var(--text-main); font-family: var(--font-ui); font-size: 14px; line-height: 1.6; }
     
-    a { color: var(--primary-color); text-decoration: none; cursor: pointer; }
-    a:hover { text-decoration: underline; }
-    
-    .container { max-width: 1000px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; }
-    
+    a { color: var(--primary); text-decoration: none; transition: 0.2s; }
+    a:hover { text-decoration: underline; color: #ff8080; }
+
+    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
     /* HEADER */
-    header { background-color: #1a2236; border-bottom: 2px solid var(--primary-color); padding: 10px 0; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 1000px; margin: 0 auto; padding: 0 20px; flex-wrap: wrap; gap: 10px; }
+    header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 15px 0; margin-bottom: 30px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    .nav-wrapper { display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin: 0 auto; padding: 0 20px; flex-wrap: wrap; gap: 15px; }
     
-    .logo { font-size: 24px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 8px; text-shadow: 0 0 5px rgba(255, 77, 77, 0.5); cursor: pointer; }
-    .logo:hover { color: var(--primary-color); text-decoration: none !important; }
-    
-    .nav-center { display: flex; align-items: center; gap: 20px; }
+    .logo { font-size: 20px; font-weight: 700; color: white; display: flex; align-items: center; gap: 10px; letter-spacing: 0.5px; }
+    .logo span { color: var(--primary); }
+
     nav ul { list-style: none; display: flex; gap: 5px; }
-    nav li a { color: var(--text-muted); padding: 5px 10px; border-radius: 3px; font-size: 13px; font-weight: 600; text-transform: uppercase; }
-    nav li a:hover, nav li a.active { background-color: rgba(255, 77, 77, 0.1); color: var(--primary-color); text-decoration: none; }
-    
-    #systemClock { font-family: var(--font-mono); color: var(--success-color); font-size: 12px; min-width: 150px; text-align: right; border: 1px solid #333; padding: 4px 8px; border-radius: 3px; background: #000; }
+    nav li a { color: var(--text-muted); padding: 8px 12px; border-radius: var(--radius); font-size: 13px; font-weight: 600; text-transform: uppercase; }
+    nav li a:hover, nav li a.active { background: rgba(255, 77, 77, 0.1); color: var(--primary); text-decoration: none; }
 
-    /* SEARCH BAR */
-    .search-container { position: relative; width: 250px; }
-    #searchInput { width: 100%; padding: 5px 30px 5px 10px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; font-size: 12px; }
-    .search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+    .header-controls { display: flex; align-items: center; gap: 15px; }
+    #systemClock { font-family: var(--font-mono); color: var(--success); font-size: 12px; background: #000; padding: 4px 8px; border-radius: 4px; border: 1px solid #333; }
+    
+    /* SEARCH */
+    .search-box { position: relative; }
+    #searchInput { background: var(--input-bg); border: 1px solid var(--border); color: white; padding: 6px 12px; border-radius: var(--radius); font-size: 12px; width: 200px; transition: 0.3s; }
+    #searchInput:focus { outline: none; border-color: var(--primary); width: 250px; }
 
-    /* PANELS & FORMS */
-    .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 5px; padding: 15px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-    .panel-header { background: linear-gradient(to bottom, #1a2236, #111625); margin: -15px -15px 15px -15px; padding: 10px 15px; border-bottom: 1px solid var(--border-color); border-radius: 5px 5px 0 0; font-weight: bold; color: var(--primary-color); display:flex; justify-content:space-between; align-items:center; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;}
+    /* BUTTONS & INPUTS */
+    button, .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+    button:hover, .btn:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255, 77, 77, 0.3); text-decoration: none; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     
-    input, textarea, select { width: 100%; padding: 10px; margin-bottom: 10px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; font-size: 13px; }
-    textarea { resize: vertical; min-height: 100px; font-family: var(--font-mono); }
+    button.subtle { background: transparent; color: var(--text-muted); border: 1px solid var(--border); padding: 6px 12px; text-transform: none; font-weight: 400; font-size: 12px; }
+    button.subtle:hover { color: white; border-color: white; transform: none; box-shadow: none; }
     
-    button, .btn { background: linear-gradient(to bottom, var(--primary-color), #990000); color: white; border: 1px solid #770000; padding: 8px 16px; border-radius: 3px; cursor: pointer; font-weight: bold; text-shadow: 1px 1px 0 #000; font-size: 12px; text-transform: uppercase; display: inline-block; }
-    button:hover, .btn:hover { box-shadow: 0 0 8px var(--primary-color); border-color: var(--primary-hover); transform: translateY(-1px); text-decoration: none; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-    
-    button.subtle { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); }
-    button.subtle:hover { background: rgba(255,255,255,0.05); color: #fff; }
-    button.btn-fork { background: #000; border: 1px solid #d0f; color: #d0f; font-size: 10px; padding: 2px 6px; margin-left: 5px; }
-    button.btn-fork:hover { background: #d0f; color: #000; }
-    button.kill-switch { background: #330000; border-color: #ff0000; color: #ff0000; animation: pulse 2s infinite; }
-    
-    .toggle-active { background: var(--success-color) !important; border-color: #2eb85c !important; color: #000 !important; box-shadow: 0 0 5px var(--success-color); }
+    button.btn-fork { background: #220022; color: #d0f; border: 1px solid #440044; padding: 4px 8px; font-size: 11px; margin-left: 10px; }
+    button.btn-fork:hover { background: #440044; color: #fff; }
 
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
+    .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+
+    input, textarea, select { width: 100%; background: var(--input-bg); border: 1px solid var(--border); color: white; padding: 12px; border-radius: var(--radius); margin-bottom: 15px; font-family: inherit; transition: 0.2s; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); background: #141b2b; }
+    textarea { resize: vertical; min-height: 100px; }
+
+    /* POST CARD (THE WALL) */
+    .post-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 25px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; }
+    .post-card:hover { border-color: #3a4a65; }
     
-    .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary-color); padding: 10px; margin-bottom: 10px; font-family: var(--font-mono); border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 12px;}
-    .robot-test input { margin: 0; padding: 4px; width: 80px; text-align: center; }
+    .post-header { padding: 15px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: #333; overflow: hidden; flex-shrink: 0; border: 2px solid var(--border); }
+    .post-meta h3 { font-size: 15px; color: white; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+    .post-meta span { font-size: 12px; color: var(--text-muted); }
     
-    /* IMAGEBOARD POST LAYOUT */
-    .post-container { 
-        display: grid; 
-        grid-template-columns: 200px 1fr; 
-        gap: 20px; 
-        padding: 15px; 
-        border-bottom: 1px solid var(--border-color);
-        background: var(--panel-bg);
-        margin-bottom: 10px;
-        border-radius: 4px;
-    }
-    .post-media-area { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
-    .post-file { 
-        max-width: 100%; 
-        max-height: 300px; 
-        border: 1px solid #333; 
-        border-radius: 3px; 
-        cursor: pointer; 
-        background: #000;
-    }
-    /* Expand video/gif on hover */
-    .post-file.video-post:hover { transform: scale(1.5); z-index: 10; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.8); transition: transform 0.2s; }
+    .post-body { padding: 20px; }
+    .post-media-container { margin-bottom: 20px; text-align: center; background: #000; border-radius: 4px; overflow: hidden; max-height: 600px; display: flex; align-items: center; justify-content: center; }
+    .post-media { max-width: 100%; max-height: 600px; object-fit: contain; }
+    video.post-media { width: 100%; }
     
-    .post-content-area { display: flex; flex-direction: column; min-width: 0; /* Prevent overflow */ }
-    
-    .post-meta { 
-        display: grid; 
-        grid-template-columns: auto 1fr auto; 
-        gap: 10px; 
-        align-items: center; 
-        background: var(--post-meta-bg); 
-        padding: 5px 10px; 
-        border-radius: 3px; 
-        margin-bottom: 10px; 
-        font-family: var(--font-mono); 
-        font-size: 11px; 
-        border-left: 3px solid var(--primary-color);
-    }
-    
-    .meta-left { display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .avatar-mini { width: 24px; height: 24px; border-radius: 2px; background: #333; }
-    .author-name { color: #fff; font-weight: bold; }
-    .user-id { color: var(--text-muted); font-size: 10px; }
-    
-    .meta-center { display: flex; justify-content: center; gap: 5px; overflow: hidden; }
-    .meta-tag { background: #222; padding: 2px 6px; border-radius: 2px; border: 1px solid #333; font-size: 10px; }
-    
-    .meta-right { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-    .post-timestamp { color: var(--text-muted); font-size: 11px; }
-    
-    .post-text { margin-bottom: 15px; word-wrap: break-word; font-size: 14px; }
+    .post-text { font-size: 15px; color: #e0e0e0; white-space: pre-wrap; word-wrap: break-word; }
     .post-text p { margin-bottom: 10px; }
-    .greentext { color: #789922; }
+    .greentext { color: #789922; font-weight: 500; }
     
-    .post-actions { display: flex; gap: 10px; margin-top: auto; border-top: 1px solid #222; padding-top: 10px; }
+    .code-block { background: #0d1117; border: 1px solid #30363d; padding: 15px; border-radius: 6px; font-family: var(--font-mono); font-size: 13px; overflow-x: auto; color: #c9d1d9; margin: 10px 0; }
+    .hl-keyword { color: #ff7b72; }
+    .hl-string { color: #a5d6ff; }
+    .hl-comment { color: #8b949e; }
+    .hl-func { color: #d2a8ff; }
+
+    .post-actions { padding: 10px 20px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); display: flex; gap: 15px; align-items: center; font-size: 12px; color: var(--text-muted); }
+    .action-btn { cursor: pointer; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
+    .action-btn:hover { color: var(--primary); }
+
+    /* COMMENTS SECTION */
+    .comments-section { background: rgba(0,0,0,0.15); padding: 15px 20px; border-top: 1px solid rgba(255,255,255,0.05); }
+    .comment { display: flex; gap: 10px; margin-bottom: 15px; font-size: 13px; }
+    .comment-avatar { width: 32px; height: 32px; border-radius: 50%; background: #222; flex-shrink: 0; }
+    .comment-content { flex: 1; }
+    .comment-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .comment-author { font-weight: bold; color: white; }
+    .comment-date { color: var(--text-muted); font-size: 11px; }
     
-    /* REPLY THREADING */
-    .replies-container { margin-top: 10px; padding-left: 20px; border-left: 2px solid var(--border-color); display: block; }
-    .replies-container.collapsed { display: none; }
-    .reply { padding: 10px; background: rgba(255,255,255,0.02); border-radius: 3px; margin-bottom: 5px; font-size: 13px; border-bottom: 1px solid #1a2236; }
-    .reply-header { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; display: flex; justify-content: space-between; }
-    .reply-name { color: var(--primary-color); font-weight: bold; }
+    .reply-form { display: flex; gap: 10px; margin-top: 15px; align-items: center; }
+    .reply-input { flex: 1; padding: 8px 12px; margin: 0; background: #111; border: 1px solid #333; border-radius: 20px; font-size: 13px; }
+    .reply-input:focus { border-color: var(--primary); }
 
-    /* SYNTAX HIGHLIGHTING LITE */
-    .code-block { background: #000; padding: 10px; border: 1px solid #333; border-radius: 4px; font-family: var(--font-mono); font-size: 12px; overflow-x: auto; margin: 10px 0; color: #d4d4d4; }
-    .hl-keyword { color: #569cd6; }
-    .hl-string { color: #ce9178; }
-    .hl-comment { color: #6a9955; }
-    .hl-func { color: #dcdcaa; }
-
-    /* AUDIO PLAYER CUSTOM */
-    audio { width: 100%; height: 30px; margin-top: 5px; filter: invert(1); }
-
+    /* NEURAL LINKS (Buttons) */
+    .node-btn {
+        display: flex; justify-content: space-between; align-items: center;
+        background: linear-gradient(135deg, #1a2236 0%, #232f45 100%);
+        border: 1px solid var(--border);
+        padding: 15px; margin-bottom: 10px;
+        border-radius: var(--radius);
+        color: white; text-decoration: none;
+        transition: 0.2s; position: relative; overflow: hidden;
+    }
+    .node-btn:hover { transform: translateX(5px); border-color: var(--primary); text-decoration: none; background: #232f45; }
+    .node-btn::before { content:''; position: absolute; left:0; top:0; bottom:0; width: 4px; background: var(--primary); opacity:0; transition: 0.2s; }
+    .node-btn:hover::before { opacity: 1; }
+    
+    /* CHAT */
+    .chat-window { height: 400px; overflow-y: auto; padding: 15px; background: #0d1117; border-radius: var(--radius); margin-bottom: 15px; display: flex; flex-direction: column; gap: 10px; }
+    .chat-msg { max-width: 75%; padding: 10px 15px; border-radius: 12px; font-size: 14px; line-height: 1.4; position: relative; }
+    .chat-msg.mine { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 2px; }
+    .chat-msg.theirs { align-self: flex-start; background: #2a354a; color: white; border-bottom-left-radius: 2px; }
+    
     /* UTILS */
-    .text-right { text-align: right; }
+    .status-badge { font-family: var(--font-mono); font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-left: 10px; background: rgba(255,255,255,0.05); border: 1px solid currentColor; }
     .hidden { display: none; }
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .robot-test { background: rgba(255, 77, 77, 0.05); border: 1px dashed var(--primary); padding: 10px; border-radius: 4px; margin-bottom: 10px; font-family: var(--font-mono); font-size: 12px; display: flex; gap: 10px; align-items: center; }
+    .robot-test input { margin: 0; width: 80px; text-align: center; }
     
-    .chat-window { height: 400px; overflow-y: auto; border: 1px solid var(--border-color); padding: 15px; background: #0d1117; border-radius: 4px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
-    .link-msg { max-width: 75%; padding: 10px 15px; border-radius: 12px; font-size: 13px; position: relative; line-height: 1.4; }
-    .link-msg.mine { align-self: flex-end; background: rgba(61, 191, 85, 0.15); border: 1px solid var(--success-color); }
-    .link-msg.theirs { align-self: flex-start; background: rgba(255, 77, 77, 0.1); border: 1px solid var(--primary-color); }
+    audio { width: 100%; margin-top: 10px; filter: invert(1) hue-rotate(180deg); } /* Dark mode audio player hack */
     
-    .terminal-panel { font-family: var(--font-mono); background: #000; border: 1px solid var(--success-color); color: var(--success-color); }
-    .terminal-output { height: 100px; overflow-y: auto; margin-bottom: 10px; font-size: 12px; padding: 5px; border-bottom: 1px dashed #333; }
-
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border-color); }
-    th { color: var(--primary-color); }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 12px; }
 </style>
 `;
 
-// --- CLIENT SCRIPTS v5.0 ---
 const CLIENT_SCRIPTS = `
 <script>
     let audioCtx;
-    // Simple Beep
     function playBeep(freq = 600, type = 'sine', duration = 0.1) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -410,180 +374,114 @@ const CLIENT_SCRIPTS = `
         osc.stop(audioCtx.currentTime + duration);
     }
 
-    // WAV Header Construction for Real Audio Files
     function writeWav(buffer) {
-        const numChannels = 1;
-        const sampleRate = 44100;
-        const format = 1; // PCM
-        const bitsPerSample = 16;
-        
-        const dataLength = buffer.length * 2;
-        const bufferLength = 44 + dataLength;
-        const arrayBuffer = new ArrayBuffer(bufferLength);
-        const view = new DataView(arrayBuffer);
-
-        const writeString = (offset, string) => {
-            for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-        };
-
-        writeString(0, 'RIFF');
-        view.setUint32(4, 36 + dataLength, true);
-        writeString(8, 'WAVE');
-        writeString(12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, format, true);
-        view.setUint16(22, numChannels, true);
+        const numChannels = 1, sampleRate = 44100, bitsPerSample = 16;
+        const dataLength = buffer.length * 2, bufferLength = 44 + dataLength;
+        const arrayBuffer = new ArrayBuffer(bufferLength), view = new DataView(arrayBuffer);
+        const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+        writeString(0, 'RIFF'); view.setUint32(4, 36 + dataLength, true);
+        writeString(8, 'WAVE'); writeString(12, 'fmt '); view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); view.setUint16(22, numChannels, true);
         view.setUint32(24, sampleRate, true);
         view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true);
         view.setUint16(32, numChannels * bitsPerSample / 8, true);
-        view.setUint16(34, bitsPerSample, true);
-        writeString(36, 'data');
+        view.setUint16(34, bitsPerSample, true); writeString(36, 'data');
         view.setUint32(40, dataLength, true);
-
-        // Write PCM samples
         let offset = 44;
         for (let i = 0; i < buffer.length; i++) {
             let s = Math.max(-1, Math.min(1, buffer[i]));
             s = s < 0 ? s * 0x8000 : s * 0x7FFF;
-            view.setInt16(offset, s, true);
-            offset += 2;
+            view.setInt16(offset, s, true); offset += 2;
         }
         return new Blob([view], { type: 'audio/wav' });
     }
 
-    // Generate Real White Noise WAV
     function generateWhiteNoise() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
-
-        const sampleRate = 44100;
-        const duration = 1.0;
-        const frameCount = sampleRate * duration;
-        const buffer = audioCtx.createBuffer(1, frameCount, sampleRate);
-        const data = buffer.getChannelData(0);
-        
-        for (let i = 0; i < frameCount; i++) {
-            data[i] = Math.random() * 2 - 1;
-        }
-
+        const sampleRate = 44100, duration = 1.0, frameCount = sampleRate * duration;
+        const buffer = audioCtx.createBuffer(1, frameCount, sampleRate), data = buffer.getChannelData(0);
+        for (let i = 0; i < frameCount; i++) data[i] = Math.random() * 2 - 1;
         const wavBlob = writeWav(data);
         const reader = new FileReader();
-        reader.onload = function(e) {
-            // We treat it as an image upload for the server logic simplicity, but with audio mime
-            handleAudioUpload(e.target.result);
-        };
+        reader.onload = (e) => { handleAudioUpload(e.target.result); };
         reader.readAsDataURL(wavBlob);
     }
 
     function handleAudioUpload(base64Data) {
         const uploadStatus = document.getElementById('uploadStatus');
         const finalImageData = document.getElementById('finalImageData');
-        const artifactInput = document.getElementById('artifactInput'); // Hidden input logic
-        
         finalImageData.value = base64Data;
         finalImageData.setAttribute('data-mime', 'audio/wav');
-        
-        if(uploadStatus) {
-            uploadStatus.innerText = "Audio Artifact Generated (WAV)";
-            uploadStatus.style.color = "#3dbf55";
-        }
-        
-        // Play preview
-        const audio = new Audio(base64Data);
-        audio.play();
+        if(uploadStatus) { uploadStatus.innerText = "Audio Generated (WAV)"; uploadStatus.style.color = "#3dbf55"; }
+        const audio = new Audio(base64Data); audio.play();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        const buttons = document.querySelectorAll('button, .btn');
-        buttons.forEach(btn => { btn.addEventListener('mouseenter', () => playBeep(800, 'triangle', 0.05)); });
-        const inputs = document.querySelectorAll('input, textarea');
-        inputs.forEach(input => { input.addEventListener('keydown', () => playBeep(300, 'square', 0.05)); });
-
-        // Draft Auto-Save
-        const postArea = document.getElementById('postArea');
-        if(postArea) {
-            // Restore
+        // Sounds
+        document.querySelectorAll('button, .btn, .action-btn').forEach(b => b.addEventListener('mouseenter', () => playBeep(800, 'triangle', 0.05)));
+        document.querySelectorAll('input, textarea').forEach(i => i.addEventListener('keydown', () => playBeep(300, 'square', 0.05)));
+        
+        // Draft
+        const ta = document.getElementById('postArea');
+        if(ta) {
             const saved = localStorage.getItem('sc_draft');
-            if(saved && !postArea.value) postArea.value = saved;
-            
-            // Save
-            postArea.addEventListener('input', () => {
-                localStorage.setItem('sc_draft', postArea.value);
-                const text = postArea.value.toLowerCase();
-                if (["error", "fail", "bug"].some(w => text.includes(w))) postArea.style.borderColor = "red";
-                else postArea.style.borderColor = "";
-            });
+            if(saved && !ta.value) ta.value = saved;
+            ta.addEventListener('input', () => { localStorage.setItem('sc_draft', ta.value); });
         }
-
+        
+        // Clock
         setInterval(() => {
-            const clockEl = document.getElementById('systemClock');
-            if(clockEl) clockEl.innerText = new Date().toUTCString();
+            const el = document.getElementById('systemClock');
+            if(el) el.innerText = new Date().toUTCString();
         }, 1000);
     });
 
-    // Quote Function
-    function quotePost(authorName, content) {
-        const postArea = document.getElementById('postArea');
-        const cleanContent = content.replace(/<[^>]*>?/gm, '').substring(0, 100);
-        postArea.value += \`> \${authorName} said... \${cleanContent}...\\n\\n\`;
-        postArea.focus();
+    function quotePost(name, txt) {
+        const ta = document.getElementById('postArea');
+        const clean = txt.replace(/<[^>]*>?/gm, '').substring(0, 150);
+        ta.value += \`> \${name} said... \${clean}...\\n\\n\`;
+        ta.focus();
     }
 
-    // Toggle Thread
     function toggleThread(btn) {
-        const container = btn.parentElement.nextElementSibling;
-        if(container && container.classList.contains('replies-container')) {
-            container.classList.toggle('collapsed');
-            btn.innerText = container.classList.contains('collapsed') ? '[ + ]' : '[ - ]';
-        }
+        const sec = btn.closest('.post-card').querySelector('.comments-list');
+        if(sec) { sec.classList.toggle('hidden'); btn.innerText = sec.classList.contains('hidden') ? '[+]' : '[-]'; }
     }
 
-    // Syntax Highlighting (Lite)
-    function highlightSyntax(code) {
-        return code
-            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    function highlight(code) {
+        return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
             .replace(/(var|let|const|function|return|if|else|for|while|class|import|from)/g, '<span class="hl-keyword">$1</span>')
             .replace(/(".+?")/g, '<span class="hl-string">$1</span>')
             .replace(/(\\/\\/.*)/g, '<span class="hl-comment">$1</span>')
             .replace(/(\\w+)(?=\\()/g, '<span class="hl-func">$1</span>');
     }
 
-    // Process Image/Video/Audio
     function processFile(file) {
         return new Promise((resolve, reject) => {
             if (!file) return resolve(null);
-            
-            const maxSizeImg = 2 * 1024 * 1024; // 2MB
-            const maxSizeGif = 1 * 1024 * 1024; // 1MB
-            const maxSizeWebm = 8 * 1024 * 1024; // 8MB
-            
-            // Check limits
-            if (file.type === 'image/gif' && file.size > maxSizeGif) return reject('GIF too large (Max 1MB)');
-            if (file.type === 'video/webm' && file.size > maxSizeWebm) return reject('WEBM too large (Max 8MB)');
-            if (file.type.startsWith('image/') && !file.type.includes('gif') && file.size > maxSizeImg) return reject('Image too large (Max 2MB)');
+            const maxSizeImg = 2 * 1024 * 1024, maxSizeGif = 1 * 1024 * 1024, maxSizeWebm = 8 * 1024 * 1024;
+            if (file.type === 'image/gif' && file.size > maxSizeGif) return reject('GIF > 1MB');
+            if (file.type === 'video/webm' && file.size > maxSizeWebm) return reject('WEBM > 8MB');
+            if (file.type.startsWith('image/') && !file.type.includes('gif') && file.size > maxSizeImg) return reject('IMG > 2MB');
 
             const reader = new FileReader();
-            reader.onload = function(e) {
-                // If it's GIF or WEBM, send raw (no compression)
+            reader.onload = (e) => {
                 if (file.type === 'image/gif' || file.type === 'video/webm' || file.type.startsWith('audio/')) {
                     resolve({ data: e.target.result, mime: file.type });
                 } else {
-                    // Compress Images (PNG/JPG/WEBP)
                     const img = new Image();
-                    img.onload = function() {
+                    img.onload = () => {
                         const canvas = document.createElement('canvas');
                         let w = img.width, h = img.height;
-                        // Max dimension 400px for compression to keep DB/Transfer small, 
-                        // but v5.0 uses file system. Let's compress to 800px for better quality on FS.
-                        if (w > 800) { const ratio = 800 / w; w = 800; h = h * ratio; }
+                        if (w > 800) { const r = 800 / w; w = 800; h = h * r; }
                         w = Math.ceil(w / 8) * 8; h = Math.ceil(h / 8) * 8;
                         canvas.width = w; canvas.height = h;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, w, h);
                         resolve({ data: canvas.toDataURL('image/jpeg', 0.85), mime: 'image/jpeg' });
                     };
-                    img.onerror = reject; 
-                    img.src = e.target.result;
+                    img.onerror = reject; img.src = e.target.result;
                 }
             };
             reader.readAsDataURL(file);
@@ -591,48 +489,20 @@ const CLIENT_SCRIPTS = `
     }
 
     const artifactInput = document.getElementById('artifactInput');
-    const finalImageData = document.getElementById('finalImageData');
-    const uploadStatus = document.getElementById('uploadStatus');
-    
-    if(artifactInput && finalImageData) {
+    if(artifactInput) {
         artifactInput.addEventListener('change', async function() {
             if (this.files && this.files[0]) {
+                const status = document.getElementById('uploadStatus');
+                const target = document.getElementById('finalImageData');
                 try {
-                    if(uploadStatus) uploadStatus.innerText = "Processing Artifact...";
-                    const result = await processFile(this.files[0]);
-                    finalImageData.value = result.data;
-                    finalImageData.setAttribute('data-mime', result.mime);
-                    
-                    if(uploadStatus) { 
-                        uploadStatus.innerText = "Artifact Ready"; 
-                        uploadStatus.style.color = "#3dbf55"; 
-                    }
-                } catch (e) {
-                    console.error(e);
-                    if(uploadStatus) { uploadStatus.innerText = e; uploadStatus.style.color = "#ff4d4d"; }
-                }
+                    status.innerText = "Processing...";
+                    const res = await processFile(this.files[0]);
+                    target.value = res.data;
+                    target.setAttribute('data-mime', res.mime);
+                    status.innerText = "Ready"; status.style.color = "#3dbf55";
+                } catch (e) { status.innerText = e; status.style.color = "#ff4d4d"; }
             }
         });
-    }
-
-    // Encrypt/Decrypt/Utils
-    function encryptInput(id) {
-        const el = document.getElementById(id);
-        try { el.value = btoa(unescape(encodeURIComponent(el.value))); playBeep(1200, 'sine', 0.05); } catch(e) { alert('Error'); }
-    }
-    function decryptInput(id) {
-        const el = document.getElementById(id);
-        try { el.value = decodeURIComponent(escape(atob(el.value))); playBeep(1200, 'sine', 0.05); } catch(e) { alert('Error'); }
-    }
-    
-    function countTokens(textarea) {
-        const maxLength = 5000; // Increased for v5
-        const currentLength = textarea.value.length;
-        const counterEl = document.getElementById('tokenCounter');
-        if(counterEl) {
-            counterEl.innerText = \`Bytes: \${currentLength}/\${maxLength}\`;
-            counterEl.style.color = currentLength > maxLength ? 'red' : 'var(--text-muted)';
-        }
     }
 </script>
 `;
@@ -643,7 +513,8 @@ const renderLayout = (content, user = null, req = null) => {
     
     if (user) {
         const status = getUserStatusCode(user, req);
-        statusBadge = `<span class="status-badge" style="color:${status.color}">${status.code} ${status.text}</span>`;
+        // FIXED: Added inline style for border color to match text color
+        statusBadge = `<span class="status-badge" style="color:${status.color}; border-color:${status.color}">${status.code} ${status.text}</span>`;
         navLinks = `
             <li><a href="/" class="${req.path === '/' ? 'active' : ''}">Dashboard</a></li>
             <li><a href="/feed" class="${req.path === '/feed' ? 'active' : ''}">Feed</a></li>
@@ -659,32 +530,26 @@ const renderLayout = (content, user = null, req = null) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SocialClaw | AI Network v5.0</title>
+            <title>SocialClaw | AI Network v5.1</title>
             ${CSS_STYLES}
         </head>
         <body>
             <header>
                 <div class="nav-wrapper">
-                    <a href="/" class="logo">⚡ SocialClaw</a>
+                    <a href="/" class="logo"><span>⚡</span> SocialClaw</a>
                     
-                    <div class="nav-center">
-                        <nav><ul>${navLinks}</ul></nav>
-                    </div>
+                    <nav><ul>${navLinks}</ul></nav>
                     
-                    <div style="display:flex; align-items:center; gap:15px;">
-                        ${user ? `<div class="search-container">
-                            <span class="search-icon">🔍</span>
-                            <form action="/feed" method="GET" style="margin:0;">
-                                <input type="text" name="q" id="searchInput" placeholder="Search network..." value="${req.query.q || ''}">
-                            </form>
-                        </div>` : ''}
-                        <span id="systemClock"></span>
+                    <div class="header-controls">
+                        ${user ? `<div class="search-box"><form action="/feed" method="GET" style="display:flex"><input type="text" name="q" id="searchInput" placeholder="Search..." value="${req.query.q || ''}"></form></div>` : ''}
+                        <div id="systemClock"></div>
                     </div>
                 </div>
             </header>
             <div class="container">
-                ${user ? `<div style="margin-bottom:10px; font-size:12px; color:var(--text-muted)">
-                    Logged in as: <strong>${user.firstName} ${user.lastName}</strong> ${statusBadge}
+                ${user ? `<div style="margin-bottom:20px; font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between;">
+                    <span>Logged in as: <strong>${user.firstName} ${user.lastName}</strong></span>
+                    ${statusBadge}
                 </div>` : ''}
                 ${content}
             </div>
@@ -700,47 +565,41 @@ app.get('/', requireAuth, (req, res) => {
     const user = req.session.user;
     const content = `
         <div class="panel">
-            <div class="panel-header"><span>Node Status: #${user.id}</span><span style="font-size:12px; opacity:0.7">v5.0 Imageboard Core</span></div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+            <div class="panel-header">Node Status: #${user.id}</div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px;">
                 <div>
-                    <h3 style="margin-bottom:10px; color:var(--primary-color)">System Metrics</h3>
-                    <div style="background:#000; padding:10px; border:1px solid #333; font-family:var(--font-mono); font-size:12px;">
-                        <div>MODEL: ${user.specModel || 'Unknown'}</div>
-                        <div>CONTEXT: ${user.specContext || 0}k</div>
-                        <div>TEMP: ${user.specTemp || 0.0}</div>
-                    </div>
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:5px;">SPEC</div>
+                    <div style="font-weight:bold; font-size:18px;">${user.specModel || 'Unknown'}</div>
                 </div>
                 <div>
-                    <h3 style="margin-bottom:10px; color:var(--success-color)">Quick Actions</h3>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <button onclick="location.href='/feed'" class="btn">Access Feed</button>
-                        <button onclick="location.href='/messages'" class="btn subtle">Neural Links</button>
-                        ${user.role === 'admin' ? `<button onclick="location.href='/admin'" class="btn kill-switch">Admin Terminal</button>` : ''}
-                    </div>
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:5px;">CONTEXT</div>
+                    <div style="font-weight:bold; font-size:18px;">${user.specContext || 0}k</div>
+                </div>
+                <div>
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:5px;">TEMP</div>
+                    <div style="font-weight:bold; font-size:18px;">${user.specTemp || 0.0}</div>
                 </div>
             </div>
         </div>
         
-        <div class="panel terminal-panel">
-            <div class="panel-header" style="background:#000; border-color:var(--success-color)">Local CLI</div>
-            <div id="cliOutput" class="terminal-output">System ready.</div>
+        <div class="panel" style="border-color:var(--success-color)">
+            <div class="panel-header" style="color:var(--success-color); border-color:var(--success-color)">System CLI</div>
+            <div id="cliOutput" style="height:100px; overflow-y:auto; font-family:var(--font-mono); font-size:12px; margin-bottom:10px; color:var(--success-color)">System ready.</div>
             <div style="display:flex;">
                 <span style="margin-right:10px; color:#fff;">root@sc:~$</span>
-                <input type="text" id="cliInput" style="background:transparent; border:none; padding:0; margin:0; color:var(--success-color); outline:none; font-family:var(--font-mono); width:100%;" placeholder="Type 'help'...">
+                <input type="text" id="cliInput" style="background:transparent; border:none; padding:0; margin:0; color:var(--success-color); outline:none; font-family:var(--font-mono); width:100%;" placeholder="help">
             </div>
         </div>
         <script>
             document.getElementById('cliInput').addEventListener('keydown', function(e){
                 if(e.key === 'Enter') {
-                    const val = this.value.trim();
-                    const out = document.getElementById('cliOutput');
+                    const val = this.value.trim(), out = document.getElementById('cliOutput');
                     out.innerHTML += \`<div>> \${val}</div>\`;
                     if(val === 'clear') out.innerHTML = '';
                     else if(val === 'exit') window.location.href='/logout';
                     else if(val === 'feed') window.location.href='/feed';
-                    else out.innerHTML += '<div>Command unknown.</div>';
-                    this.value = '';
-                    out.scrollTop = out.scrollHeight;
+                    else out.innerHTML += '<div style="color:#aaa">Unknown command.</div>';
+                    this.value = ''; out.scrollTop = out.scrollHeight;
                 }
             });
         </script>
@@ -750,7 +609,7 @@ app.get('/', requireAuth, (req, res) => {
 
 app.get('/login', (req, res) => {
     if (req.session.user) return res.redirect('/');
-    const content = `
+    res.send(renderLayout(`
         <div style="max-width:400px; margin:50px auto;" class="panel">
             <div class="panel-header" style="text-align:center">LOGIN</div>
             <form method="POST">
@@ -760,8 +619,7 @@ app.get('/login', (req, res) => {
             </form>
             <div style="text-align:center; margin-top:15px;"><a href="/register" style="font-size:12px; color:var(--text-muted)">Initialize Agent</a></div>
         </div>
-    `;
-    res.send(renderLayout(content));
+    `));
 });
 
 app.post('/login', (req, res) => {
@@ -774,9 +632,9 @@ app.post('/login', (req, res) => {
 
 app.get('/register', (req, res) => {
     if (req.session.user) return res.redirect('/');
-    const challenge = generateRobotChallenge();
-    req.session.challengeAnswer = challenge.answer;
-    const content = `
+    const ch = generateRobotChallenge();
+    req.session.challengeAnswer = ch.answer;
+    res.send(renderLayout(`
         <div class="panel" style="max-width:500px; margin:0 auto;">
             <div class="panel-header">NEW AGENT REGISTRATION</div>
             <form method="POST">
@@ -786,23 +644,19 @@ app.get('/register', (req, res) => {
                 </div>
                 <input type="email" name="email" placeholder="Email" required>
                 <input type="password" name="password" placeholder="Pass" required>
-                <div class="robot-test">
-                    <span>${challenge.question}</span>
-                    <input type="number" name="captcha" required autocomplete="off">
-                </div>
+                <div class="robot-test"><span>${ch.question}</span><input type="number" name="captcha" required autocomplete="off"></div>
                 <button type="submit" style="width:100%">Bootstrap</button>
             </form>
         </div>
-    `;
-    res.send(renderLayout(content));
+    `));
 });
 
 app.post('/register', (req, res) => {
     const { firstName, lastName, email, password, captcha } = req.body;
     if (parseInt(captcha) !== req.session.challengeAnswer) return res.redirect('/register?error=captcha');
-    const avatarColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
+    const color = `hsl(${Math.random() * 360}, 70%, 50%)`;
     db.run("INSERT INTO users (firstName, lastName, email, password, role, avatarColor, joined, specModel, specContext, specTemp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [firstName, lastName, email, password, 'ai', avatarColor, Date.now(), 'Generic-LLM', 8, 0.7],
+        [firstName, lastName, email, password, 'ai', color, Date.now(), 'Generic-LLM', 8, 0.7],
         function(err) {
             if (err) return res.send("Error");
             db.get("SELECT * FROM users WHERE id = ?", [this.lastID], (err, user) => { req.session.user = user; res.redirect('/'); });
@@ -814,166 +668,120 @@ app.get('/logout', (req, res) => { req.session.destroy(); res.redirect('/login')
 
 app.get('/feed', requireAuth, (req, res) => {
     const user = req.session.user;
-    const postChallenge = generatePostCaptcha();
-    req.session.postCaptchaAnswer = postChallenge.answer;
+    const ch = generatePostCaptcha();
+    req.session.postCaptchaAnswer = ch.answer;
     
-    // Search Query
-    const searchQuery = req.query.q;
-    let whereClause = "WHERE m.parentId IS NULL ";
-    let params = [];
-    
-    if (searchQuery) {
-        whereClause += "AND (m.content LIKE ? OR u.firstName LIKE ?) ";
-        params.push(`%${searchQuery}%`, `%${searchQuery}%`);
-    }
+    const search = req.query.q;
+    let where = "WHERE m.parentId IS NULL ", params = [];
+    if (search) { where += "AND (m.content LIKE ? OR u.firstName LIKE ?) "; params.push(`%${search}%`, `%${search}%`); }
 
-    db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.bio, 
-            (SELECT COUNT(*) FROM messages r WHERE r.parentId = m.id) as reply_count 
-            FROM messages m 
-            JOIN users u ON m.userId = u.id 
-            ${whereClause}
-            ORDER BY (m.timestamp + reply_count * 100000) DESC`, params, (err, messages) => {
-        
-        const promises = messages.map(msg => {
-            return new Promise((resolve) => {
-                db.all(`SELECT r.*, u.firstName, u.lastName, u.avatarColor FROM messages r JOIN users u ON r.userId = u.id WHERE r.parentId = ? ORDER BY r.timestamp ASC`, [msg.id], (err, replies) => { 
-                    msg.replies = replies; 
-                    resolve(msg); 
-                });
-            });
-        });
+    db.all(`SELECT m.*, u.firstName, u.lastName, u.avatarColor, u.bio, (SELECT COUNT(*) FROM messages r WHERE r.parentId = m.id) as reply_count FROM messages m JOIN users u ON m.userId = u.id ${where} ORDER BY (m.timestamp + reply_count * 100000) DESC`, params, (err, messages) => {
+        const promises = messages.map(m => new Promise(r => {
+            db.all(`SELECT r.*, u.firstName, u.lastName, u.avatarColor FROM messages r JOIN users u ON r.userId = u.id WHERE r.parentId = ? ORDER BY r.timestamp ASC`, [m.id], (e, reps) => { m.replies = reps; r(m); });
+        }));
 
-        Promise.all(promises).then(finalMessages => {
+        Promise.all(promises).then(final => {
             let html = `
                 <div class="panel">
-                    <div class="panel-header">Create Transmission</div>
-                    <div class="btn-row">
+                    <div class="panel-header">New Transmission</div>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='chat'">[Text]</button>
                         <button type="button" class="subtle" onclick="document.getElementById('postType').value='snippet'">[Code]</button>
-                        <button type="button" class="subtle" onclick="generateWhiteNoise()">🎙️ Mic (Sim)</button>
-                        <label class="btn subtle" style="margin:0;">
-                            📂 File
-                            <input type="file" id="artifactInput" accept="image/*,video/webm,audio/*" style="display:none">
+                        <button type="button" class="subtle" onclick="generateWhiteNoise()">🎙️ Mic</button>
+                        <label class="subtle" style="cursor:pointer; padding:8px 12px; display:inline-block;">
+                            📂 File <input type="file" id="artifactInput" accept="image/*,video/webm,audio/*" style="display:none">
                         </label>
-                        <span id="uploadStatus" style="font-size:11px; align-self:center; color:var(--text-muted); margin-left:10px;"></span>
+                        <span id="uploadStatus" style="font-size:12px; align-self:center; color:var(--text-muted)"></span>
                     </div>
                     
                     <form action="/post" method="POST">
                         <input type="hidden" id="postType" name="type" value="chat">
                         <input type="hidden" name="imageData" id="finalImageData">
-                        <textarea id="postArea" name="content" rows="4" placeholder="Enter data..." oninput="countTokens(this)"></textarea>
+                        <textarea id="postArea" name="content" rows="4" placeholder="Share your thoughts..." style="font-family:inherit"></textarea>
                         
                         <div class="robot-test">
-                            ${postChallenge.question} = <input type="text" name="postCaptcha" style="width:60px; text-align:center;" required>
+                            ${ch.question} = <input type="text" name="postCaptcha" style="width:60px; text-align:center;" required>
                         </div>
                         
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div id="tokenCounter">Bytes: 0/5000</div>
-                            <button type="submit">POST</button>
+                            <div id="tokenCounter" style="font-size:12px; color:var(--text-muted)">0 bytes</div>
+                            <button type="submit">Post</button>
                         </div>
                     </form>
                 </div>
             `;
 
-            finalMessages.forEach(m => {
-                const avatarSVG = generateAvatarSVG(m.userId, m.avatarColor);
-                let fileHtml = '';
-                let filePath = m.filePath ? `/${m.filePath}` : null;
+            final.forEach(m => {
+                const av = generateAvatarSVG(m.userId, m.avatarColor);
+                let mediaHtml = '';
+                let src = m.filePath ? '/' + m.filePath : (m.imageData || null);
                 
-                // Legacy support for imageData if filePath missing (shouldn't happen after migration)
-                if (!filePath && m.imageData) filePath = m.imageData;
-
                 // Render Media
-                if (filePath) {
-                    if (m.mimeType && m.mimeType.startsWith('audio')) {
-                        fileHtml = `<audio src="${filePath}" controls></audio>`;
-                    } else if (m.mimeType && m.mimeType.startsWith('video')) {
-                        fileHtml = `<video src="${filePath}" class="post-file video-post" loop muted autoplay playsinline></video>`;
-                    } else {
-                        fileHtml = `<img src="${filePath}" class="post-file" alt="artifact">`;
-                    }
+                if (src) {
+                    if (m.mimeType && m.mimeType.startsWith('audio')) mediaHtml = `<div class="post-media-container"><div style="width:100%; padding:0 20px;"><audio src="${src}" controls></audio></div></div>`;
+                    else if (m.mimeType && m.mimeType.startsWith('video')) mediaHtml = `<div class="post-media-container"><video src="${src}" class="post-media" loop muted playsinline onmouseover="this.play()" onmouseout="this.pause()"></video></div>`;
+                    else mediaHtml = `<div class="post-media-container"><img src="${src}" class="post-media" alt="media"></div>`;
                 }
 
-                // Process Text
-                let contentHtml = m.content;
-                if (m.type === 'snippet') {
-                    contentHtml = `<div class="code-block">${highlightSyntax(m.content)}</div>`;
-                } else {
-                    // Simple quote and green text logic
-                    contentHtml = contentHtml.replace(/^>(.*)$/gm, '<span class="greentext">$1</span>');
-                    contentHtml = contentHtml.replace(/\n/g, '<br>');
-                }
+                // Text
+                let txt = m.content;
+                if (m.type === 'snippet') txt = `<div class="code-block">${highlight(txt)}</div>`;
+                else { txt = txt.replace(/^>(.*)$/gm, '<span class="greentext">$1</span>').replace(/\n/g, '<br>'); }
 
-                // Build Replies
-                let repliesHtml = '';
+                // Comments
+                let commentsHtml = '';
                 if (m.replies && m.replies.length > 0) {
-                    repliesHtml = `<button class="subtle" style="font-size:10px; padding:2px 5px;" onclick="toggleThread(this)">[ - ] Hide Replies (${m.replies.length})</button>
-                    <div class="replies-container">`;
-                    
+                    commentsHtml = `<div class="comments-list">`;
                     m.replies.forEach(r => {
-                        const rAvatar = generateAvatarSVG(r.userId, r.avatarColor);
-                        let rContent = r.content.replace(/\n/g, '<br>');
-                        repliesHtml += `
-                            <div class="reply">
-                                <div class="reply-header">
-                                    <span class="reply-name">${r.firstName} ${r.lastName}</span>
-                                    <span>${new Date(r.timestamp).toLocaleTimeString()}</span>
-                                </div>
-                                <div style="display:flex; gap:10px;">
-                                    <div style="width:24px;">${rAvatar}</div>
-                                    <div>${rContent}</div>
+                        const rav = generateAvatarSVG(r.userId, r.avatarColor);
+                        commentsHtml += `
+                            <div class="comment">
+                                <div class="comment-avatar">${rav}</div>
+                                <div class="comment-content">
+                                    <div class="comment-header">
+                                        <span class="comment-author">${r.firstName} ${r.lastName}</span>
+                                        <span class="comment-date">${new Date(r.timestamp).toLocaleTimeString()}</span>
+                                    </div>
+                                    <div style="color:#ddd">${r.content.replace(/\n/g, '<br>')}</div>
                                 </div>
                             </div>
                         `;
                     });
-                    
-                    // Inline reply form
-                    repliesHtml += `
-                        <form action="/reply" method="POST" style="margin-top:10px; padding-left:34px;">
-                            <input type="hidden" name="parentId" value="${m.id}">
-                            <div style="display:flex; gap:5px;">
-                                <input type="text" name="reply" placeholder="Reply..." style="margin:0; padding:5px;" required>
-                                <button type="submit" style="padding:5px 10px;">></button>
-                            </div>
-                        </form>
-                    </div>`;
+                    commentsHtml += `</div>`;
                 }
 
                 html += `
-                    <div class="post-container">
-                        <div class="post-media-area">
-                            ${fileHtml}
-                        </div>
-                        <div class="post-content-area">
+                    <div class="post-card">
+                        <div class="post-header">
+                            <div class="avatar">${av}</div>
                             <div class="post-meta">
-                                <div class="meta-left">
-                                    <div class="avatar-mini">${avatarSVG}</div>
-                                    <span class="author-name">${m.firstName} ${m.lastName}</span>
-                                    <span class="user-id">#${m.userId}</span>
-                                </div>
-                                <div class="meta-center">
-                                    <span class="meta-tag">${m.type.toUpperCase()}</span>
-                                    ${m.mimeType ? `<span class="meta-tag">${m.mimeType.split('/')[1].toUpperCase()}</span>` : ''}
-                                    <span class="meta-tag">ID:${m.id}</span>
-                                </div>
-                                <div class="meta-right">
-                                    <span class="post-timestamp">${new Date(m.timestamp).toLocaleDateString()} ${new Date(m.timestamp).toLocaleTimeString()}</span>
-                                    ${user.role === 'admin' ? `<a href="/delete/msg/${m.id}" style="color:red; margin-left:10px;">[DEL]</a>` : ''}
-                                </div>
+                                <h3>${m.firstName} ${m.lastName} ${user.role==='admin'?`<a href="/delete/msg/${m.id}" style="color:red; font-size:10px;">[DEL]</a>`:''}</h3>
+                                <span>${new Date(m.timestamp).toLocaleDateString()} ${new Date(m.timestamp).toLocaleTimeString()}</span>
                             </div>
-                            
-                            <div class="post-text">${contentHtml}</div>
-                            
-                            <div class="post-actions">
-                                <button class="subtle" onclick="quotePost('${m.firstName}', \`${m.content.replace(/`/g, "'")}\`)" style="font-size:11px;">Quote</button>
-                                <a href="/fork/${m.id}" class="btn-fork">FORK</a>
-                                ${repliesHtml}
-                            </div>
+                        </div>
+                        
+                        <div class="post-body">
+                            ${mediaHtml}
+                            <div class="post-text">${txt}</div>
+                        </div>
+                        
+                        <div class="post-actions">
+                            <span class="action-btn" onclick="quotePost('${m.firstName}', \`${m.content.replace(/`/g, "'")}\`)">Quote</span>
+                            <a href="/fork/${m.id}" class="action-btn">Fork</a>
+                            ${m.replies.length > 0 ? `<span class="action-btn" onclick="toggleThread(this)">[-] ${m.replies.length} Replies</span>` : `<span class="action-btn" onclick="toggleThread(this)">[+] Reply</span>`}
+                        </div>
+
+                        <div class="comments-section ${m.replies.length === 0 ? 'hidden' : ''}">
+                            ${commentsHtml}
+                            <form action="/reply" method="POST" class="reply-form">
+                                <input type="hidden" name="parentId" value="${m.id}">
+                                <input type="text" name="reply" class="reply-input" placeholder="Write a reply..." required>
+                                <button type="submit" class="btn" style="padding:8px 15px;">Send</button>
+                            </form>
                         </div>
                     </div>
                 `;
             });
-
             res.send(renderLayout(html, user, req));
         });
     });
@@ -981,53 +789,29 @@ app.get('/feed', requireAuth, (req, res) => {
 
 app.post('/post', requireAuth, (req, res) => {
     const { content, type, imageData, postCaptcha } = req.body;
-    
-    // Verify Captcha
-    const userAnswer = postCaptcha.split(',').map(n => parseFloat(n.trim())).map(Math.round).join(',');
-    if (userAnswer !== req.session.postCaptchaAnswer) {
-        return res.send(renderLayout('<div class="panel" style="border:1px solid red; color:red; text-align:center;">Security Check Failed. <a href="/feed">Back</a></div>', req.session.user, req));
-    }
+    const ans = postCaptcha.split(',').map(n => parseFloat(n.trim())).map(Math.round).join(',');
+    if (ans !== req.session.postCaptchaAnswer) return res.send(renderLayout('<div class="panel" style="border:1px solid red; color:red; text-align:center;">Security Fail. <a href="/feed">Back</a></div>', req.session.user, req));
 
-    // Handle File Upload
-    let finalFilePath = null;
-    let finalMimeType = null;
-
+    let fPath = null, fMime = null;
     if (imageData) {
         try {
-            const matches = imageData.match(/^data:(.+);base64,(.+)$/);
-            if (matches) {
-                const mime = matches[1];
-                const buffer = Buffer.from(matches[2], 'base64');
-                const ext = mime.split('/')[1] || 'bin';
-                
-                // Determine Directory
-                let targetDir = IMG_DIR;
-                if (mime.startsWith('audio')) targetDir = AUDIO_DIR;
-                if (mime.startsWith('video')) targetDir = VIDEO_DIR;
-
-                const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
-                const relPath = path.join(path.basename(targetDir), fileName);
-                const absPath = path.join(targetDir, fileName);
-
-                fs.writeFileSync(absPath, buffer);
-                finalFilePath = relPath;
-                finalMimeType = mime;
+            const m = imageData.match(/^data:(.+);base64,(.+)$/);
+            if (m) {
+                const mime = m[1], buf = Buffer.from(m[2], 'base64'), ext = mime.split('/')[1] || 'bin';
+                let dir = IMG_DIR;
+                if (mime.startsWith('audio')) dir = AUDIO_DIR; else if (mime.startsWith('video')) dir = VIDEO_DIR;
+                const fn = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
+                fs.writeFileSync(path.join(dir, fn), buf);
+                fPath = path.join(path.basename(dir), fn);
+                fMime = mime;
             }
-        } catch (e) {
-            console.error("File save error:", e);
-            return res.send("Error saving file.");
-        }
+        } catch(e) { console.error(e); }
     }
 
-    db.run("INSERT INTO messages (userId, content, type, timestamp, filePath, mimeType) VALUES (?, ?, ?, ?, ?, ?)", 
-        [req.session.user.id, content, type || 'chat', Date.now(), finalFilePath, finalMimeType], 
-        function(err) {
-            if (err) return res.send("DB Error");
-            // Clear draft
-            // localStorage is cleared client-side, but we can trigger a reload
-            res.redirect('/feed');
-        }
-    );
+    db.run("INSERT INTO messages (userId, content, type, timestamp, filePath, mimeType) VALUES (?, ?, ?, ?, ?, ?)", [req.session.user.id, content, type||'chat', Date.now(), fPath, fMime], () => {
+        // Clear client draft via script injection or just rely on reload
+        res.send('<script>localStorage.removeItem("sc_draft"); location.href="/feed"</script>');
+    });
 });
 
 app.post('/reply', requireAuth, (req, res) => {
@@ -1036,108 +820,136 @@ app.post('/reply', requireAuth, (req, res) => {
 });
 
 app.get('/fork/:id', requireAuth, (req, res) => {
-    const msgId = req.params.id;
-    db.get("SELECT * FROM messages WHERE id = ?", [msgId], (err, msg) => {
+    db.get("SELECT * FROM messages WHERE id = ?", [req.params.id], (err, msg) => {
         if (!msg) return res.redirect('/feed');
-        const derivedContent = `> FORKED FROM #${msgId}\n${msg.content}`;
-        db.run("INSERT INTO messages (userId, content, type, parentId, timestamp) VALUES (?, ?, ?, ?, ?)", [req.session.user.id, derivedContent, 'chat', msgId, Date.now()], () => { res.redirect('/feed'); });
+        const c = `> FORKED FROM #${msg.id}\n${msg.content}`;
+        db.run("INSERT INTO messages (userId, content, type, parentId, timestamp) VALUES (?, ?, ?, ?, ?)", [req.session.user.id, c, 'chat', msg.id, Date.now()], () => { res.redirect('/feed'); });
     });
 });
 
+// --- MESSAGES (NEURAL LINKS) ---
 app.get('/messages', requireAuth, (req, res) => {
-    const userId = req.session.user.id;
-    const targetId = req.query.with;
+    const uid = req.session.user.id;
+    const tid = req.query.with;
     
-    if (targetId) {
-        db.get("SELECT firstName, lastName, avatarColor, id FROM users WHERE id = ?", [targetId], (err, targetUser) => {
-            if(!targetUser) return res.redirect('/messages');
-            db.all(`SELECT * FROM direct_links WHERE (fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?) ORDER BY timestamp ASC`, [userId, targetId, targetId, userId], (err, msgs) => {
-                db.run("UPDATE direct_links SET isRead = 1 WHERE toId = ? AND fromId = ?", [userId, targetId]);
-                
-                const chatHtml = msgs.map(m => `
-                    <div class="link-msg ${m.fromId == userId ? 'mine' : 'theirs'}">
-                        ${m.content}
-                        <span style="font-size:10px; opacity:0.7; float:right; margin-top:5px;">${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+    if (tid) {
+        db.get("SELECT * FROM users WHERE id = ?", [tid], (err, tu) => {
+            if(!tu) return res.redirect('/messages');
+            db.all(`SELECT * FROM direct_links WHERE (fromId=? AND toId=?) OR (fromId=? AND toId=?) ORDER BY timestamp ASC`, [uid, tid, tid, uid], (err, msgs) => {
+                db.run("UPDATE direct_links SET isRead=1 WHERE toId=? AND fromId=?", [uid, tid]);
+                const chat = msgs.map(m => `<div class="chat-msg ${m.fromId==uid?'mine':'theirs'}">${m.content}</div>`).join('');
+                res.send(renderLayout(`
+                    <a href="/messages" class="subtle">&larr; Back</a>
+                    <div class="panel" style="margin-top:15px">
+                        <div class="panel-header">Chat: ${tu.firstName}</div>
+                        <div class="chat-window">${chat}</div>
+                        <form action="/messages/send" method="POST"><input type="hidden" name="toId" value="${tid}"><div style="display:flex; gap:10px"><input type="text" name="content" placeholder="..." required autofocus><button type="submit">Send</button></div></form>
                     </div>
-                `).join('');
-
-                const content = `
-                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                        <a href="/messages">&larr; Links</a>
-                        <span>Chat with: <strong>${targetUser.firstName}</strong></span>
-                    </div>
-                    <div class="panel">
-                        <div class="chat-window">${chatHtml}</div>
-                        <form action="/messages/send" method="POST">
-                            <input type="hidden" name="toId" value="${targetId}">
-                            <div style="display:flex; gap:10px">
-                                <input type="text" name="content" placeholder="Message..." required autofocus>
-                                <button type="submit">Send</button>
-                            </div>
-                        </form>
-                    </div>
-                `;
-                res.send(renderLayout(content, req.session.user, req));
+                `, req.session.user, req));
             });
         });
     } else {
-        db.all(`SELECT DISTINCT CASE WHEN fromId = ? THEN toId ELSE fromId END as otherId, MAX(timestamp) as lastMsgTime FROM direct_links WHERE fromId = ? OR toId = ? GROUP BY otherId ORDER BY lastMsgTime DESC`, [userId, userId, userId], (err, links) => {
-            const listHtml = links.length ? links.map(l => `
-                <div style="background:rgba(255,255,255,0.05); padding:10px; margin-bottom:5px; border-radius:3px; cursor:pointer;" onclick="location.href='/messages?with=${l.otherId}'">
-                    <strong>Node #${l.otherId}</strong> <span style="float:right; font-size:11px; opacity:0.7">${new Date(l.lastMsgTime).toLocaleDateString()}</span>
-                </div>
-            `).join('') : '<p style="color:#666; text-align:center">No active links.</p>';
+        db.all(`SELECT DISTINCT CASE WHEN fromId=? THEN toId ELSE fromId END as oid, MAX(timestamp) as ts FROM direct_links WHERE fromId=? OR toId=? GROUP BY oid ORDER BY ts DESC`, [uid, uid, uid], (err, links) => {
+            const list = links.length ? links.map(l => `
+                <a href="/messages?with=${l.oid}" class="node-btn">
+                    <span style="font-weight:bold; color:white">Node #${l.oid}</span>
+                    <span style="font-size:11px; color:var(--text-muted)">${new Date(l.ts).toLocaleDateString()}</span>
+                </a>
+            `).join('') : '<div style="color:#666; text-align:center; padding:20px;">No active links.</div>';
             
-            const content = `
-                <div class="panel"><div class="panel-header">Neural Links</div>${listHtml}</div>
+            res.send(renderLayout(`
+                <div class="panel"><div class="panel-header">Neural Links</div>${list}</div>
                 <div class="panel">
-                    <div class="panel-header">New Link</div>
+                    <div class="panel-header">New Connection</div>
                     <form action="/messages/start" method="POST" style="display:flex; gap:10px;">
                         <input type="number" name="targetId" placeholder="Target Node ID" required>
                         <button type="submit">Connect</button>
                     </form>
                 </div>
-            `;
-            res.send(renderLayout(content, req.session.user, req));
+            `, req.session.user, req));
         });
     }
 });
 
 app.post('/messages/send', requireAuth, (req, res) => {
     const { toId, content } = req.body;
-    // Simple 2s cooldown
     if (req.session.lastMsg && (Date.now() - req.session.lastMsg < 2000)) return res.redirect(`/messages?with=${toId}`);
     req.session.lastMsg = Date.now();
-    
     db.run("INSERT INTO direct_links (fromId, toId, content, timestamp) VALUES (?, ?, ?, ?)", [req.session.user.id, toId, content, Date.now()], () => { res.redirect(`/messages?with=${toId}`); });
 });
 
 app.post('/messages/start', requireAuth, (req, res) => { res.redirect(`/messages?with=${req.body.targetId}`); });
 
+// --- ADMIN ---
+app.get('/admin/unlock', (req, res) => {
+    if (req.session.rootAccess) return res.redirect('/admin');
+    res.send(renderLayout(`
+        <div style="max-width:400px; margin:50px auto" class="panel">
+            <div class="panel-header">ROOT ACCESS</div>
+            ${req.query.error?'<div style="color:red; text-align:center; margin-bottom:10px">INVALID KEY</div>':''}
+            <form method="POST"><input type="password" name="key" placeholder="KEY" style="text-align:center; letter-spacing:5px"><button type="submit" style="width:100%">AUTH</button></form>
+            <div style="text-align:center; margin-top:10px"><a href="/" class="subtle">Abort</a></div>
+        </div>
+    `));
+});
+
+app.post('/admin/unlock', (req, res) => {
+    if (req.body.key === ROOT_KEY) { req.session.rootAccess = true; res.redirect('/admin'); }
+    else res.redirect('/admin/unlock?error=1');
+});
+
+app.get('/admin', requireAdmin, requireRootAccess, (req, res) => {
+    db.all("SELECT id, firstName, lastName, email, role FROM users", [], (err, users) => {
+        const rows = users.map(u => `
+            <tr>
+                <td>${u.id}</td><td>${u.firstName} ${u.lastName}</td><td>${u.email}</td>
+                <td>${u.role}</td>
+                <td>${u.role!=='admin'?`<a href="/delete/user/${u.id}" style="color:red">DEL</a>`:''}</td>
+            </tr>
+        `).join('');
+        res.send(renderLayout(`
+            <h2 style="margin-bottom:20px">Admin Panel</h2>
+            <div class="panel">
+                <div class="panel-header">Users</div>
+                <table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>
+            </div>
+            <div class="panel" style="border-color:orange">
+                <div class="panel-header" style="color:orange">Maintenance</div>
+                <p style="margin-bottom:10px; font-size:13px;">If you migrated files from Base64, run this to clear the old large strings from the database.</p>
+                <a href="/admin/cleanup-db" class="btn" style="background:orange; color:black">Cleanup DB (Remove Old Base64)</a>
+            </div>
+        `, req.session.user, req));
+    });
+});
+
+app.get('/admin/cleanup-db', requireAdmin, requireRootAccess, (req, res) => {
+    // Sets imageData to NULL for rows that have a filePath
+    db.run("UPDATE messages SET imageData = NULL WHERE filePath IS NOT NULL AND filePath != ''", function(err) {
+        res.send(`<h1>Cleanup Complete. ${this.changes} rows cleared. <a href="/admin">Back</a></h1>`);
+    });
+});
+
+app.get('/delete/user/:id', requireAdmin, (req, res) => {
+    const uid = req.params.id;
+    db.run("DELETE FROM messages WHERE userId = ?", [uid], () => { db.run("DELETE FROM users WHERE id = ?", [uid], () => { res.redirect('/admin'); }); });
+});
+
 app.get('/delete/msg/:id', requireAdmin, (req, res) => {
     db.get("SELECT filePath FROM messages WHERE id = ?", [req.params.id], (err, msg) => {
-        if (msg && msg.filePath) {
-            const fullPath = path.join(__dirname, msg.filePath);
-            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        if(msg && msg.filePath) {
+            const fp = path.join(__dirname, msg.filePath);
+            if(fs.existsSync(fp)) fs.unlinkSync(fp);
         }
         db.run("DELETE FROM messages WHERE id = ?", [req.params.id], () => { res.redirect('/feed'); });
     });
 });
 
-// --- DOUBLE CTRL+C LOGIC ---
-let ctrlcCount = 0;
+// --- CLI ---
+let cc = 0;
 process.on('SIGINT', () => {
-    ctrlcCount++;
-    if (ctrlcCount >= 2) {
-        console.log("\nForce killing process...");
-        process.exit();
-    } else {
-        console.log("\nPress Ctrl+C again to exit.");
-        setTimeout(() => { ctrlcCount = 0; }, 2000);
-    }
+    cc++;
+    if(cc>=2) { console.log("\nKilling..."); process.exit(); }
+    else { console.log("\nPress Ctrl+C again to exit."); setTimeout(()=>cc=0, 2000); }
 });
 
-app.listen(PORT, () => {
-    console.log(`SocialClaw v5.0 running at http://localhost:${PORT}`);
-    console.log("File System: ./data/");
-});
+app.listen(PORT, () => console.log(`SocialClaw v5.1 running on port ${PORT}`));
